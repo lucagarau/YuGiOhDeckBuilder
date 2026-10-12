@@ -1,5 +1,52 @@
+# ---- Python ----
 __pycache__/
 *.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+ENV/
+pip-log.txt
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# ---- Archivio locale ----
+# Database dei mazzi e cache immagini: si rigenerano con "Aggiorna DB",
+# pesano decine di MB e sono diversi per ogni installazione.
 data/
+*.db
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+
+# ---- Eseguibile e build PyInstaller ----
+YuGiOhDeckBuilder.exe
+YuGiOhDeckBuilder
+build/
+dist/
+*.spec
+
+# ---- Node (installato, non ancora usato dal progetto) ----
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.npm/
+
+# ---- Editor e sistema operativo ----
 .vscode/
 .idea/
+*.swp
+*~
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ---- File di lavoro ----
+*.log
+*.tmp
+*.bak

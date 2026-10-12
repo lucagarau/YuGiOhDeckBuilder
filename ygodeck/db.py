@@ -9,7 +9,7 @@ DB_PATH = os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "ygodeck.db"
 )
 
-SCHEMA = """
+SCHEMA_TABLES = """
 CREATE TABLE IF NOT EXISTS cards (
     id          INTEGER PRIMARY KEY,
     name        TEXT NOT NULL,
@@ -23,8 +23,6 @@ CREATE TABLE IF NOT EXISTS cards (
     archetype   TEXT,
     descr       TEXT
 );
-CREATE INDEX IF NOT EXISTS idx_cards_name ON cards(name);
-CREATE INDEX IF NOT EXISTS idx_cards_archetype ON cards(archetype);
 
 -- Gli artwork alternativi hanno un passcode proprio: i mazzi possono usarlo
 -- al posto di quello canonico, quindi va ricondotto alla carta vera.
@@ -40,6 +38,8 @@ CREATE TABLE IF NOT EXISTS decks (
     format              TEXT,
     archetype           TEXT,
     archetypes          TEXT,
+    strategy            TEXT,
+    strategies          TEXT,
     main_json           TEXT,
     extra_json          TEXT,
     side_json           TEXT,
@@ -56,9 +56,6 @@ CREATE TABLE IF NOT EXISTS decks (
     submit_date         TEXT,
     fetched_at          TEXT
 );
-CREATE INDEX IF NOT EXISTS idx_decks_format ON decks(format);
-CREATE INDEX IF NOT EXISTS idx_decks_archetype ON decks(archetype);
-CREATE INDEX IF NOT EXISTS idx_decks_name ON decks(name);
 
 CREATE TABLE IF NOT EXISTS deck_cards (
     deck_num INTEGER NOT NULL,
@@ -67,12 +64,23 @@ CREATE TABLE IF NOT EXISTS deck_cards (
     qty      INTEGER NOT NULL,
     PRIMARY KEY (deck_num, card_id, zone)
 ) WITHOUT ROWID;
-CREATE INDEX IF NOT EXISTS idx_deck_cards_card ON deck_cards(card_id);
 
 CREATE TABLE IF NOT EXISTS meta (
     key   TEXT PRIMARY KEY,
     value TEXT
 );
+"""
+
+# Gli indici si creano dopo la migrazione: possono toccare colonne che
+# un archivio creato da una versione precedente non ha ancora.
+SCHEMA_INDEXES = """
+CREATE INDEX IF NOT EXISTS idx_cards_name ON cards(name);
+CREATE INDEX IF NOT EXISTS idx_cards_archetype ON cards(archetype);
+CREATE INDEX IF NOT EXISTS idx_decks_format ON decks(format);
+CREATE INDEX IF NOT EXISTS idx_decks_archetype ON decks(archetype);
+CREATE INDEX IF NOT EXISTS idx_decks_strategy ON decks(strategy);
+CREATE INDEX IF NOT EXISTS idx_decks_name ON decks(name);
+CREATE INDEX IF NOT EXISTS idx_deck_cards_card ON deck_cards(card_id);
 """
 
 _local = threading.local()
@@ -91,9 +99,35 @@ def connect():
     return conn
 
 
+# Colonne aggiunte dopo la prima versione: gli archivi gia' creati non le
+# hanno, e CREATE TABLE IF NOT EXISTS non le aggiunge.
+MIGRATIONS = {
+    "decks": {
+        "strategy": "TEXT",
+        "strategies": "TEXT",
+    },
+}
+
+
+def _migrate(conn):
+    for table, columns in MIGRATIONS.items():
+        existing = {
+            r["name"] for r in conn.execute("PRAGMA table_info(%s)" % table)
+        }
+        if not existing:
+            continue
+        for column, kind in columns.items():
+            if column not in existing:
+                conn.execute(
+                    "ALTER TABLE %s ADD COLUMN %s %s" % (table, column, kind)
+                )
+
+
 def init():
     conn = connect()
-    conn.executescript(SCHEMA)
+    conn.executescript(SCHEMA_TABLES)
+    _migrate(conn)
+    conn.executescript(SCHEMA_INDEXES)
     conn.commit()
 
 
@@ -264,13 +298,15 @@ def upsert_decks(decks):
     for d in decks:
         conn.execute(
             "INSERT INTO decks(deck_num, name, author, format, archetype, archetypes,"
+            " strategy, strategies,"
             " main_json, extra_json, side_json, side_fetched, cover_card, views, price,"
             " pretty_url, excerpt, description, tournament_name, tournament_place,"
             " tournament_players, submit_date, fetched_at)"
-            " VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
+            " VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
             " ON CONFLICT(deck_num) DO UPDATE SET"
             "  name=excluded.name, author=excluded.author, format=excluded.format,"
             "  archetype=excluded.archetype, archetypes=excluded.archetypes,"
+            "  strategy=excluded.strategy, strategies=excluded.strategies,"
             "  main_json=excluded.main_json, extra_json=excluded.extra_json,"
             "  cover_card=excluded.cover_card, views=excluded.views,"
             "  price=excluded.price, pretty_url=excluded.pretty_url,"
@@ -286,6 +322,8 @@ def upsert_decks(decks):
                 d["format"],
                 d["archetype"],
                 json.dumps(d["archetypes"]),
+                (d.get("strategies") or [None])[0],
+                json.dumps(d.get("strategies") or []),
                 json.dumps(d["main"]),
                 json.dumps(d["extra"]),
                 json.dumps(d["side"]),
@@ -353,8 +391,61 @@ SORTS = {
 }
 
 
-def search_decks(q="", fmt="", archetype="", card_id=None, sort="recent",
-                 page=1, per_page=24):
+def card_index_rows():
+    """Tutte le carte piu' gli alias, nella forma attesa dal Tagger."""
+    conn = connect()
+    rows = {
+        r["id"]: dict(r)
+        for r in conn.execute(
+            "SELECT id, name, descr, type, attribute, archetype FROM cards"
+        )
+    }
+    for r in conn.execute(
+        "SELECT a.alias_id AS id, c.name, c.descr, c.type, c.attribute, c.archetype"
+        " FROM card_aliases a JOIN cards c ON c.id = a.card_id"
+    ):
+        rows[r["id"]] = dict(r)
+    return rows
+
+
+def retag_strategies(tagger, only_missing=False, batch=400, progress=None):
+    """Ricalcola la strategia dei mazzi gia' in archivio, senza riscaricarli."""
+    conn = connect()
+    clause = " WHERE strategy IS NULL OR strategy = ''" if only_missing else ""
+    rows = conn.execute(
+        "SELECT deck_num, name, main_json, extra_json FROM decks" + clause
+    ).fetchall()
+
+    updates, done = [], 0
+    for r in rows:
+        keys = tagger.tag(
+            r["name"],
+            json.loads(r["main_json"] or "[]"),
+            json.loads(r["extra_json"] or "[]"),
+        )
+        updates.append((keys[0] if keys else None, json.dumps(keys), r["deck_num"]))
+        if len(updates) >= batch:
+            conn.executemany(
+                "UPDATE decks SET strategy=?, strategies=? WHERE deck_num=?", updates
+            )
+            conn.commit()
+            done += len(updates)
+            updates = []
+            if progress:
+                progress(done, len(rows))
+    if updates:
+        conn.executemany(
+            "UPDATE decks SET strategy=?, strategies=? WHERE deck_num=?", updates
+        )
+        conn.commit()
+        done += len(updates)
+        if progress:
+            progress(done, len(rows))
+    return done
+
+
+def search_decks(q="", fmt="", archetype="", strategy="", card_id=None,
+                 sort="recent", page=1, per_page=24):
     where, params = [], []
     if q:
         where.append("(name LIKE ? OR author LIKE ? OR excerpt LIKE ?)")
@@ -368,6 +459,9 @@ def search_decks(q="", fmt="", archetype="", card_id=None, sort="recent",
     if archetype:
         where.append("(archetype = ? OR archetypes LIKE ?)")
         params += [archetype, '%"' + archetype + '"%']
+    if strategy:
+        where.append("(strategy = ? OR strategies LIKE ?)")
+        params += [strategy, '%"' + strategy + '"%']
     if card_id:
         where.append("deck_num IN (SELECT deck_num FROM deck_cards WHERE card_id = ?)")
         params.append(int(card_id))
@@ -382,7 +476,8 @@ def search_decks(q="", fmt="", archetype="", card_id=None, sort="recent",
     per_page = max(1, min(96, int(per_page)))
     page = max(1, int(page))
     cur = conn.execute(
-        "SELECT deck_num, name, author, format, archetype, archetypes, cover_card,"
+        "SELECT deck_num, name, author, format, archetype, archetypes, strategy,"
+        " strategies, cover_card,"
         " views, price, pretty_url, excerpt, tournament_name, tournament_place,"
         " tournament_players, submit_date, main_json, extra_json, side_json"
         " FROM decks" + clause + " ORDER BY " + order + " LIMIT ? OFFSET ?",
@@ -392,6 +487,7 @@ def search_decks(q="", fmt="", archetype="", card_id=None, sort="recent",
     for r in cur:
         d = dict(r)
         d["archetypes"] = json.loads(d["archetypes"] or "[]")
+        d["strategies"] = json.loads(d["strategies"] or "[]")
         d["main_count"] = len(json.loads(d.pop("main_json") or "[]"))
         d["extra_count"] = len(json.loads(d.pop("extra_json") or "[]"))
         d["side_count"] = len(json.loads(d.pop("side_json") or "[]"))
@@ -407,6 +503,7 @@ def get_deck(deck_num):
         return None
     d = dict(row)
     d["archetypes"] = json.loads(d["archetypes"] or "[]")
+    d["strategies"] = json.loads(d["strategies"] or "[]")
     for zone in ("main", "extra", "side"):
         d[zone] = json.loads(d.pop(zone + "_json") or "[]")
     return d
@@ -428,6 +525,15 @@ def distinct_archetypes():
         " GROUP BY archetype ORDER BY n DESC, archetype ASC"
     )
     return [{"name": r["archetype"], "count": r["n"]} for r in cur]
+
+
+def distinct_strategies():
+    cur = connect().execute(
+        "SELECT strategy, COUNT(*) AS n FROM decks"
+        " WHERE strategy IS NOT NULL AND strategy <> ''"
+        " GROUP BY strategy ORDER BY n DESC, strategy ASC"
+    )
+    return [{"key": r["strategy"], "count": r["n"]} for r in cur]
 
 
 def stats():

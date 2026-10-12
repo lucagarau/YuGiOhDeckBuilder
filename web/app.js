@@ -8,6 +8,7 @@ const state = {
   total: 0,
   deck: null,
   pollTimer: null,
+  strategyLabels: {},
 };
 
 function imgUrl(id, size) {
@@ -50,10 +51,23 @@ async function loadStatus() {
 }
 
 async function loadFilters() {
-  const [formats, archetypes] = await Promise.all([
+  const [formats, archetypes, strategies] = await Promise.all([
     api("/api/formats"),
     api("/api/archetypes"),
+    api("/api/strategies"),
   ]);
+  state.strategyLabels = strategies.labels || {};
+
+  const strat = $("#fStrategy");
+  const kept = strat.value;
+  strat.innerHTML = '<option value="">Ogni funzionamento</option>';
+  for (const s of strategies.in_db) {
+    const opt = document.createElement("option");
+    opt.value = s.key;
+    opt.textContent = `${s.label} (${s.count})`;
+    strat.appendChild(opt);
+  }
+  strat.value = kept;
 
   const sel = $("#fFormat");
   sel.innerHTML = '<option value="">Tutti i formati</option>';
@@ -90,6 +104,8 @@ function currentQuery() {
   if (q) params.set("q", q);
   if (fmt) params.set("format", fmt);
   if (arch) params.set("archetype", arch);
+  const strategy = $("#fStrategy").value;
+  if (strategy) params.set("strategy", strategy);
   params.set("sort", $("#fSort").value);
   params.set("page", String(state.page));
   params.set("per_page", String(state.perPage));
@@ -143,6 +159,12 @@ function deckCard(d) {
   const tags = [];
   if (d.format) tags.push(`<span class="tag fmt">${escapeHtml(d.format)}</span>`);
   if (d.archetype) tags.push(`<span class="tag">${escapeHtml(d.archetype)}</span>`);
+  if (d.strategy)
+    tags.push(
+      `<span class="tag str">${escapeHtml(
+        state.strategyLabels[d.strategy] || d.strategy
+      )}</span>`
+    );
   if (d.tournament_place)
     tags.push(`<span class="tag trn">${escapeHtml(d.tournament_place)}</span>`);
 
@@ -181,6 +203,8 @@ async function openDeck(deckNum) {
 
   $("#deckTitle").textContent = deck.name;
   const bits = [deck.author || "anonimo", deck.format];
+  if (deck.strategy_labels && deck.strategy_labels.length)
+    bits.push(deck.strategy_labels.join(" + "));
   if (deck.tournament_name)
     bits.push(
       `${deck.tournament_name}${deck.tournament_place ? " — " + deck.tournament_place : ""}`
@@ -357,6 +381,10 @@ function init() {
     state.page = 1;
     search();
   });
+  $("#fStrategy").addEventListener("change", () => {
+    state.page = 1;
+    search();
+  });
   $("#fSort").addEventListener("change", () => {
     state.page = 1;
     search();
@@ -365,6 +393,7 @@ function init() {
     $("#fQuery").value = "";
     $("#fFormat").value = "";
     $("#fArchetype").value = "";
+    $("#fStrategy").value = "";
     $("#fSort").value = "recent";
     state.page = 1;
     search();

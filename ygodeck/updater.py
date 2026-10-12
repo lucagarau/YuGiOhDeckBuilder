@@ -6,7 +6,7 @@ l'interfaccia interroga stato() per la barra di avanzamento.
 import threading
 import time
 
-from . import db, sources
+from . import db, sources, strategies
 
 _lock = threading.Lock()
 _state = {
@@ -114,6 +114,8 @@ def _run(pages_per_format, formats, with_cards):
         _log("Riconoscimento archetipi: %d carte mappate, %d nomi noti."
              % (len(arch_map), len(name_index)))
 
+        tagger = strategies.Tagger(db.card_index_rows())
+
         _set(phase="decks")
         done = 1 if with_cards else 0
         deck_total = 0
@@ -144,12 +146,23 @@ def _run(pages_per_format, formats, with_cards):
                 for raw in raw_decks:
                     deck = sources.normalize_deck(raw, arch_map, name_index)
                     if deck["deck_num"] and deck["main"]:
+                        deck["strategies"] = tagger.tag(
+                            deck["name"], deck["main"], deck["extra"]
+                        )
                         normalized.append(deck)
                 if normalized:
                     db.upsert_decks(normalized)
                     deck_total += len(normalized)
                 done += 1
                 _set(done=done, decks_saved=deck_total)
+
+        # I mazzi gia' in archivio da prima di questa funzione non hanno
+        # ancora una strategia: si ricalcola senza riscaricarli.
+        _set(phase="strategies")
+        _log("Riconosco il funzionamento dei mazzi rimasti senza etichetta...")
+        retagged = db.retag_strategies(tagger, only_missing=True)
+        if retagged:
+            _log("Funzionamento assegnato a %d mazzi gia' in archivio." % retagged)
 
         db.set_meta("last_deck_update", db.now_iso())
         _set(phase="done", finished_at=db.now_iso(), running=False)

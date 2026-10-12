@@ -1,12 +1,16 @@
 # Yu-Gi-Oh Deck Builder
 
 Webapp locale per cercare mazzi Yu-Gi-Oh presi da internet, filtrarli per
-formato e archetipo, **vederli carta per carta** e scaricarli in `.ydk`
+formato, archetipo e funzionamento (burn, stun, chaos, monarca, ...),
+**vederli carta per carta** e scaricarli in `.ydk`
 (YGOPro / EDOPro / YGO Omega).
 
-Nessuna dipendenza da installare: solo Python 3.8+ e la sua libreria standard.
+Nessuna dipendenza da installare: l'eseguibile e' autosufficiente, e da
+sorgente bastano Python 3.8+ e la sua libreria standard.
 
 ## Avvio
+
+Doppio clic su **`YuGiOhDeckBuilder.exe`**, oppure da terminale:
 
 ```bash
 python app.py
@@ -14,6 +18,14 @@ python app.py
 
 Si apre da solo su <http://127.0.0.1:8777>. Al primo avvio l'archivio e'
 vuoto: premi **Aggiorna DB** in alto a destra.
+
+L'eseguibile e quello avviato da terminale condividono lo stesso archivio
+`data/`. Se la porta 8777 e' occupata, l'eseguibile prova le successive fino
+alla 8796. Per ricostruirlo dopo una modifica al codice:
+
+```bash
+python build_exe.py
+```
 
 Opzioni utili:
 
@@ -29,9 +41,9 @@ python app.py --update --pages 10   # aggiorna da riga di comando, poi esce
    L'ingranaggio accanto al tasto apre le opzioni: quante pagine scaricare
    per formato (20 mazzi a pagina), se riscaricare anche il database carte,
    e su quali formati limitarsi.
-2. **Cerca e filtra** per nome o autore, formato, archetipo, ordinamento.
-   I filtri lavorano sull'archivio locale, quindi sono istantanei e
-   funzionano anche offline.
+2. **Cerca e filtra** per nome o autore, formato, archetipo, funzionamento
+   e ordinamento. I filtri lavorano sull'archivio locale, quindi sono
+   istantanei e funzionano anche offline.
 3. **Apri un mazzo** per vederlo per intero prima di scaricarlo: main, extra
    e side deck con immagini, quantita' e conteggio mostri/magie/trappole.
 4. **Scarica .ydk** salva il file; **Anteprima .ydk** mostra il contenuto
@@ -75,6 +87,28 @@ altrimenti il mazzo resta senza etichetta. Sui dati reali copre circa l'85%
 dei mazzi ("Anime Kaiba" -> Blue-Eyes, "Z - One" -> Timelord, "Nash" ->
 Shark). Ogni mazzo tiene fino a 3 archetipi e il filtro li considera tutti.
 
+### Funzionamento (burn, stun, chaos, ...)
+
+Neanche questo e' esposto dalla sorgente, e il titolo lo dichiara solo nel 6%
+dei mazzi: il segnale principale sono quindi le carte. Ogni strategia ha
+carte firma, schemi cercati nel testo delle carte e soglie tarate sui mazzi
+che la dichiarano nel titolo. Un vero mazzo burn ha 10-22 carte che
+infliggono danno su 40, mentre "Burning Abyss", che burn non e', ne ha una
+sola: la soglia di 7 separa i due casi.
+
+Strategie riconosciute: **Burn**, **Stall**, **Stun/Floodgate**, **Chaos**,
+**OTK/FTK**, **Monarca**, **Exodia**, **Mill/Deck Out**, piu' tre ricavate
+dalla forma del mazzo quando non emergono carte firma (**Control** se ha
+almeno 12 trappole, **Combo** se l'Extra Deck e' pieno, **Aggro** altrimenti).
+
+OTK/FTK e' l'unica strategia in cui il titolo pesa quanto la soglia: un FTK
+moderno non ha carte firma, e' una linea di combo che vince al primo turno,
+quindi la dichiarazione dell'autore e' il dato migliore disponibile.
+
+Misurata sui mazzi che dichiarano la strategia nel titolo, la precisione e'
+del **95%** (80 su 84). Ogni mazzo tiene fino a 3 strategie e il filtro le
+considera tutte.
+
 ## Dettagli tecnici
 
 - **Side deck.** La ricerca mazzi non lo restituisce: si trova solo nella
@@ -93,27 +127,36 @@ Shark). Ogni mazzo tiene fino a 3 archetipi e il filtro li considera tutti.
 ### Struttura
 
 ```
-app.py              avvio del server e CLI
+YuGiOhDeckBuilder.exe   eseguibile (generato da build_exe.py)
+app.py                  avvio del server e CLI
+launcher.py             punto di ingresso dell'eseguibile
+build_exe.py            compilazione con PyInstaller
 ygodeck/
-  db.py             schema SQLite, upsert, ricerca
-  sources.py        chiamate a YGOPRODeck e deduzione archetipi
-  updater.py        job di aggiornamento con avanzamento
-  server.py         routing HTTP, API JSON, proxy immagini
-  ydk.py            generazione del file .ydk
-web/                interfaccia (HTML/CSS/JS, nessun framework)
-data/               ygodeck.db e cache immagini (non versionati)
+  db.py                 schema SQLite, migrazioni, upsert, ricerca
+  sources.py            chiamate a YGOPRODeck e deduzione archetipi
+  strategies.py         riconoscimento del funzionamento del mazzo
+  updater.py            job di aggiornamento con avanzamento
+  server.py             routing HTTP, API JSON, proxy immagini
+  ydk.py                generazione del file .ydk
+web/                    interfaccia (HTML/CSS/JS, nessun framework)
+data/                   ygodeck.db e cache immagini (non versionati)
 ```
+
+Node.js e' installato sulla macchina ma il progetto non lo usa: gira
+interamente sulla libreria standard di Python, quindi non c'e' niente da
+installare ne' da compilare per lo sviluppo.
 
 ### API
 
 | Metodo | Percorso | Descrizione |
 | --- | --- | --- |
 | GET | `/api/status` | statistiche archivio e stato aggiornamento |
-| GET | `/api/decks` | ricerca: `q`, `format`, `archetype`, `card_id`, `sort`, `page`, `per_page` |
+| GET | `/api/decks` | ricerca: `q`, `format`, `archetype`, `strategy`, `card_id`, `sort`, `page`, `per_page` |
 | GET | `/api/decks/<n>` | mazzo completo con carte risolte e anteprima `.ydk` |
 | GET | `/api/decks/<n>/ydk` | scarica il `.ydk` |
 | GET | `/api/formats` | formati disponibili e presenti in archivio |
 | GET | `/api/archetypes` | archetipi in archivio e vocabolario completo |
+| GET | `/api/strategies` | funzionamenti in archivio con le relative etichette |
 | GET | `/api/img/<passcode>` | immagine carta (`?size=full` per quella grande) |
 | POST | `/api/update` | avvia l'aggiornamento (`pages_per_format`, `formats`, `with_cards`) |
 

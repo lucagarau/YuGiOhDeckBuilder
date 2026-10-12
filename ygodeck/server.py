@@ -7,7 +7,7 @@ import urllib.parse
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-from . import db, sources, updater, ydk
+from . import db, sources, strategies, updater, ydk
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 WEB_DIR = os.path.join(ROOT, "web")
@@ -149,6 +149,14 @@ class Handler(BaseHTTPRequestHandler):
                 "in_db": db.distinct_archetypes(),
                 "known": db.get_archetype_names(),
             })
+        if path == "/api/strategies":
+            return self._json({
+                "labels": strategies.LABELS,
+                "in_db": [
+                    dict(s, label=strategies.LABELS.get(s["key"], s["key"]))
+                    for s in db.distinct_strategies()
+                ],
+            })
         if path == "/api/decks":
             return self._search(query)
         if path.startswith("/api/img/"):
@@ -176,6 +184,7 @@ class Handler(BaseHTTPRequestHandler):
             q=self._one(query, "q"),
             fmt=self._one(query, "format"),
             archetype=self._one(query, "archetype"),
+            strategy=self._one(query, "strategy"),
             card_id=self._one(query, "card_id") or None,
             sort=self._one(query, "sort", "recent"),
             page=int(self._one(query, "page", "1") or 1),
@@ -208,6 +217,9 @@ class Handler(BaseHTTPRequestHandler):
         deck["extra_cards"] = _expand(deck["extra"], cards)
         deck["side_cards"] = _expand(deck["side"], cards)
         deck["missing_cards"] = sorted(i for i in ids if i not in cards)
+        deck["strategy_labels"] = [
+            strategies.LABELS.get(key, key) for key in deck.get("strategies") or []
+        ]
         deck["ydk_preview"] = ydk.build(deck)
         deck["ydk_filename"] = ydk.filename(deck)
         return self._json(deck)

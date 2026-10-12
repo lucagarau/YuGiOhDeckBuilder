@@ -121,7 +121,8 @@ input, select {
 input:focus, select:focus { outline: 2px solid var(--blue); outline-offset: -1px; }
 #fQuery { flex: 1 1 280px; }
 #fFormat { flex: 0 1 230px; }
-#fArchetype { flex: 0 1 200px; }
+#fArchetype { flex: 0 1 180px; }
+#fStrategy { flex: 0 1 215px; }
 #fSort { flex: 0 1 170px; }
 
 /* ---------------------------------------------------------- results */
@@ -165,6 +166,7 @@ input:focus, select:focus { outline: 2px solid var(--blue); outline-offset: -1px
 }
 .tag.fmt { background: #13263a; color: #7fb2e4; border-color: #1e3b57; }
 .tag.trn { background: #2a1620; color: #d98fa6; border-color: #452433; }
+.tag.str { background: #162a21; color: #71c69b; border-color: #22493a; }
 .counts { color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
 
 .empty { text-align: center; color: var(--muted); padding: 50px 20px; }
