@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Yu-Gi-Oh Deck Builder — .ydk</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">
+    <span class="brand-mark">YDK</span>
+    <div>
+      <h1>Yu-Gi-Oh Deck Builder</h1>
+      <p id="dbStats" class="muted">Caricamento archivio...</p>
+    </div>
+  </div>
+  <div class="topbar-actions">
+    <button id="btnUpdate" class="btn btn-primary">Aggiorna DB</button>
+    <button id="btnUpdateOpts" class="btn btn-ghost" title="Opzioni di aggiornamento">&#9881;</button>
+  </div>
+</header>
+
+<section id="updatePanel" class="panel hidden">
+  <div class="panel-row">
+    <label>Pagine per formato
+      <input id="optPages" type="number" min="1" max="50" value="5">
+      <span class="hint">20 mazzi per pagina, 22 formati</span>
+    </label>
+    <label class="check">
+      <input id="optCards" type="checkbox" checked>
+      Riscarica anche il database carte (~21 MB)
+    </label>
+  </div>
+  <details class="panel-row">
+    <summary>Limita a formati specifici (vuoto = tutti)</summary>
+    <div id="optFormats" class="format-checks"></div>
+  </details>
+</section>
+
+<section id="progress" class="progress hidden">
+  <div class="progress-head">
+    <strong id="progressPhase">Aggiornamento</strong>
+    <span id="progressCount" class="muted"></span>
+  </div>
+  <div class="bar"><div id="progressBar" class="bar-fill"></div></div>
+  <p id="progressMsg" class="muted"></p>
+  <pre id="progressLog" class="log"></pre>
+</section>
+
+<section class="filters">
+  <input id="fQuery" type="search" placeholder="Cerca per nome del mazzo o autore..." autocomplete="off">
+  <select id="fFormat"><option value="">Tutti i formati</option></select>
+  <input id="fArchetype" list="archetypeList" placeholder="Archetipo..." autocomplete="off">
+  <datalist id="archetypeList"></datalist>
+  <select id="fSort">
+    <option value="recent">Piu' recenti</option>
+    <option value="views">Piu' visti</option>
+    <option value="name">Nome A-Z</option>
+    <option value="price_asc">Prezzo crescente</option>
+    <option value="price_desc">Prezzo decrescente</option>
+  </select>
+  <button id="btnReset" class="btn btn-ghost">Azzera</button>
+</section>
+
+<section class="results">
+  <div class="results-head">
+    <span id="resultCount" class="muted"></span>
+    <div class="pager">
+      <button id="btnPrev" class="btn btn-ghost" disabled>&#8592;</button>
+      <span id="pageLabel" class="muted">1</span>
+      <button id="btnNext" class="btn btn-ghost" disabled>&#8594;</button>
+    </div>
+  </div>
+  <div id="deckGrid" class="deck-grid"></div>
+  <p id="emptyState" class="empty hidden"></p>
+</section>
+
+<div id="overlay" class="overlay hidden">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="deckTitle">
+    <header class="modal-head">
+      <div>
+        <h2 id="deckTitle"></h2>
+        <p id="deckMeta" class="muted"></p>
+      </div>
+      <button id="btnClose" class="btn btn-ghost" aria-label="Chiudi">&#10005;</button>
+    </header>
+    <div id="deckBody" class="modal-body"></div>
+    <footer class="modal-foot">
+      <button id="btnYdk" class="btn btn-primary">Scarica .ydk</button>
+      <button id="btnPreview" class="btn btn-ghost">Anteprima .ydk</button>
+      <a id="linkSource" class="btn btn-ghost" target="_blank" rel="noopener">Apri su YGOPRODeck</a>
+    </footer>
+  </div>
+</div>
+
+<script src="/app.js"></script>
+</body>
+</html>
