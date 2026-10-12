@@ -5,6 +5,10 @@ formato, archetipo e funzionamento (burn, stun, chaos, monarca, ...),
 **vederli carta per carta** e scaricarli in `.ydk`
 (YGOPro / EDOPro / YGO Omega).
 
+Include i mazzi competitivi di YGOPRODeck **e** quelli dei personaggi di
+tutta la saga PSP *Tag Force* (1-6 e ARC-V Tag Force Special), piu' una
+modalita' casuale per farsi estrarre un mazzo a sorte.
+
 Nessuna dipendenza da installare: l'eseguibile e' autosufficiente, e da
 sorgente bastano Python 3.8+ e la sua libreria standard.
 
@@ -48,11 +52,18 @@ python app.py --update --pages 10   # aggiorna da riga di comando, poi esce
    e side deck con immagini, quantita' e conteggio mostri/magie/trappole.
 4. **Scarica .ydk** salva il file; **Anteprima .ydk** mostra il contenuto
    esatto del file prima di salvarlo.
+5. **Random** apre la modalita' casuale: scegli uno o piu' formati,
+   archetipi e funzionamenti, vedi quanti mazzi rientrano nei criteri e
+   premi *Estrai un mazzo*. Dalla scheda del mazzo *Estrai un altro*
+   ripesca con gli stessi criteri. Le scelte dentro la stessa categoria
+   valgono in OR, fra categorie diverse in AND: "Goat **o** Edison,
+   **ma** burn".
 
 ## Da dove vengono i dati
 
-Tutto da [YGOPRODeck](https://ygoprodeck.com), via endpoint pubblici senza
-chiave:
+### YGOPRODeck
+
+Mazzi competitivi e da community, via endpoint pubblici senza chiave:
 
 | Cosa | Endpoint |
 | --- | --- |
@@ -62,14 +73,47 @@ chiave:
 | Side deck | pagina HTML del mazzo (vedi sotto) |
 | Immagini carte | `images.ygoprodeck.com`, via proxy locale con cache |
 
+### Tag Force (wiki Fandom)
+
+La saga PSP non e' su YGOPRODeck. I mazzi dei personaggi sono pero'
+documentati sul [wiki Fandom](https://yugioh.fandom.com) dentro template
+`{{Decklist}}`, che hanno struttura regolare e quindi si possono leggere:
+circa **2.700 mazzi** su tutti e sette i giochi, in una ventina di secondi.
+
+Due tipi di pagina:
+
+- le pagine personaggio `<Nome> (Tag Force)`, con una sezione *Decks*
+  divisa per gioco: coprono soprattutto Tag Force 3-6 e Special;
+- le pagine `<Gioco>: Character Deck Recipes`, che raccolgono in un elenco
+  unico i mazzi di Tag Force 1 e 2.
+
+Tre dettagli non ovvi, risolti leggendo i dati veri:
+
+- **Le pagine personaggio parlano anche di altri giochi.** Sotto *Decks*
+  compaiono sezioni per Nightmare Troubadour o Spirit Caller: una
+  sottosezione che non nomina Tag Force azzera il gioco corrente, cosi'
+  quei mazzi non entrano per sbaglio.
+- **I side deck sono blocchi `{{Decklist}}` separati.** "Back to Basics 1 -
+  Side Deck" e' il side di "Back to Basics 1", non un mazzo da 15 carte:
+  viene riagganciato al suo mazzo.
+- **Il wiki indica le carte per nome, non per passcode.** Il 97-98% si
+  risolve sul database carte locale; il resto sono carte mai uscite
+  dall'OCG o esclusive dei videogiochi. I mazzi che ne perderebbero piu'
+  della meta' vengono scartati, gli altri restano con l'elenco di cosa
+  manca in evidenza sulla scheda.
+
+### Tempi
+
 Un aggiornamento completo con le impostazioni predefinite (5 pagine x 22
-formati) richiede circa un minuto e porta a ~1.900 mazzi.
+formati di YGOPRODeck, piu' tutto Tag Force) richiede circa un minuto e
+mezzo e porta a ~4.500 mazzi.
 
 ### Formati disponibili
 
-I 22 formati del sito, fra cui Tournament Meta (TCG, OCG, Worlds, Genesys),
-Master Duel, Speed Duel, e i formati retro **Goat**, **Edison**, **Domain**,
-**Trinity**.
+I 22 formati di YGOPRODeck, fra cui Tournament Meta (TCG, OCG, Worlds,
+Genesys), Master Duel, Speed Duel, e i formati retro **Goat**, **Edison**,
+**Domain**, **Trinity**; piu' i sette giochi **Tag Force**, trattati come
+formati a se' stanti.
 
 ### Archetipi
 
@@ -111,6 +155,10 @@ considera tutte.
 
 ## Dettagli tecnici
 
+- **Provenienza.** La colonna `source` distingue `ygoprodeck` da
+  `tagforce`; i mazzi Tag Force usano numeri sopra il miliardo, cosi' non
+  possono collidere con quelli di YGOPRODeck, e il numero deriva da un
+  hash di gioco + personaggio + titolo, quindi riaggiornare non duplica.
 - **Side deck.** La ricerca mazzi non lo restituisce: si trova solo nella
   pagina HTML del mazzo. Viene recuperato alla prima apertura del mazzo e
   salvato in archivio, cosi' il `.ydk` e' completo.
@@ -134,6 +182,7 @@ build_exe.py            compilazione con PyInstaller
 ygodeck/
   db.py                 schema SQLite, migrazioni, upsert, ricerca
   sources.py            chiamate a YGOPRODeck e deduzione archetipi
+  tagforce.py           mazzi della saga Tag Force dal wiki Fandom
   strategies.py         riconoscimento del funzionamento del mazzo
   updater.py            job di aggiornamento con avanzamento
   server.py             routing HTTP, API JSON, proxy immagini
@@ -157,6 +206,8 @@ installare ne' da compilare per lo sviluppo.
 | GET | `/api/formats` | formati disponibili e presenti in archivio |
 | GET | `/api/archetypes` | archetipi in archivio e vocabolario completo |
 | GET | `/api/strategies` | funzionamenti in archivio con le relative etichette |
+| GET | `/api/decks/random` | un mazzo a caso; `format`, `archetype` e `strategy` sono ripetibili |
+| GET | `/api/decks/pool` | quanti mazzi rientrano negli stessi criteri |
 | GET | `/api/img/<passcode>` | immagine carta (`?size=full` per quella grande) |
 | POST | `/api/update` | avvia l'aggiornamento (`pages_per_format`, `formats`, `with_cards`) |
 

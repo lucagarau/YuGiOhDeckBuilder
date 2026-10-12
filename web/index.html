@@ -17,10 +17,34 @@
     </div>
   </div>
   <div class="topbar-actions">
+    <button id="btnRandomMode" class="btn btn-ghost" title="Modalita' casuale">&#127922; Random</button>
     <button id="btnUpdate" class="btn btn-primary">Aggiorna DB</button>
     <button id="btnUpdateOpts" class="btn btn-ghost" title="Opzioni di aggiornamento">&#9881;</button>
   </div>
 </header>
+
+<section id="randomPanel" class="panel random-panel hidden">
+  <div class="random-grid">
+    <label class="pick">
+      <span>Formati</span>
+      <select id="rndFormats" multiple size="7"></select>
+    </label>
+    <label class="pick">
+      <span>Funzionamento</span>
+      <select id="rndStrategies" multiple size="7"></select>
+    </label>
+    <div class="pick">
+      <span>Archetipi</span>
+      <input id="rndArchetypeInput" list="archetypeList" placeholder="Scrivi e premi Invio..." autocomplete="off">
+      <div id="rndArchetypeChips" class="chips"></div>
+    </div>
+  </div>
+  <div class="random-actions">
+    <button id="btnDraw" class="btn btn-primary">&#127922; Estrai un mazzo</button>
+    <button id="btnRandomReset" class="btn btn-ghost">Azzera scelte</button>
+    <span id="rndPool" class="muted"></span>
+  </div>
+</section>
 
 <section id="updatePanel" class="panel hidden">
   <div class="panel-row">
@@ -91,7 +115,8 @@
     <footer class="modal-foot">
       <button id="btnYdk" class="btn btn-primary">Scarica .ydk</button>
       <button id="btnPreview" class="btn btn-ghost">Anteprima .ydk</button>
-      <a id="linkSource" class="btn btn-ghost" target="_blank" rel="noopener">Apri su YGOPRODeck</a>
+      <button id="btnReroll" class="btn btn-ghost hidden">&#127922; Estrai un altro</button>
+      <a id="linkSource" class="btn btn-ghost" target="_blank" rel="noopener">Apri la fonte</a>
     </footer>
   </div>
 </div>

@@ -54,6 +54,9 @@ CREATE TABLE IF NOT EXISTS decks (
     tournament_place    TEXT,
     tournament_players  INTEGER,
     submit_date         TEXT,
+    source              TEXT DEFAULT 'ygoprodeck',
+    source_url          TEXT,
+    unresolved          TEXT,
     fetched_at          TEXT
 );
 
@@ -79,6 +82,7 @@ CREATE INDEX IF NOT EXISTS idx_cards_archetype ON cards(archetype);
 CREATE INDEX IF NOT EXISTS idx_decks_format ON decks(format);
 CREATE INDEX IF NOT EXISTS idx_decks_archetype ON decks(archetype);
 CREATE INDEX IF NOT EXISTS idx_decks_strategy ON decks(strategy);
+CREATE INDEX IF NOT EXISTS idx_decks_source ON decks(source);
 CREATE INDEX IF NOT EXISTS idx_decks_name ON decks(name);
 CREATE INDEX IF NOT EXISTS idx_deck_cards_card ON deck_cards(card_id);
 """
@@ -105,6 +109,9 @@ MIGRATIONS = {
     "decks": {
         "strategy": "TEXT",
         "strategies": "TEXT",
+        "source": "TEXT DEFAULT 'ygoprodeck'",
+        "source_url": "TEXT",
+        "unresolved": "TEXT",
     },
 }
 
@@ -301,8 +308,9 @@ def upsert_decks(decks):
             " strategy, strategies,"
             " main_json, extra_json, side_json, side_fetched, cover_card, views, price,"
             " pretty_url, excerpt, description, tournament_name, tournament_place,"
-            " tournament_players, submit_date, fetched_at)"
-            " VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
+            " tournament_players, submit_date, source, source_url, unresolved,"
+            " fetched_at)"
+            " VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
             " ON CONFLICT(deck_num) DO UPDATE SET"
             "  name=excluded.name, author=excluded.author, format=excluded.format,"
             "  archetype=excluded.archetype, archetypes=excluded.archetypes,"
@@ -314,7 +322,9 @@ def upsert_decks(decks):
             "  tournament_name=excluded.tournament_name,"
             "  tournament_place=excluded.tournament_place,"
             "  tournament_players=excluded.tournament_players,"
-            "  submit_date=excluded.submit_date, fetched_at=excluded.fetched_at",
+            "  submit_date=excluded.submit_date, source=excluded.source,"
+            "  source_url=excluded.source_url, unresolved=excluded.unresolved,"
+            "  fetched_at=excluded.fetched_at",
             (
                 d["deck_num"],
                 d["name"],
@@ -327,7 +337,7 @@ def upsert_decks(decks):
                 json.dumps(d["main"]),
                 json.dumps(d["extra"]),
                 json.dumps(d["side"]),
-                1 if d["side"] else 0,
+                d.get("side_fetched", 1 if d["side"] else 0),
                 d["cover_card"],
                 d["views"],
                 d["price"],
@@ -338,6 +348,9 @@ def upsert_decks(decks):
                 d["tournament_place"],
                 d["tournament_players"],
                 d["submit_date"],
+                d.get("source") or "ygoprodeck",
+                d.get("source_url"),
+                json.dumps(d.get("unresolved") or []),
                 ts,
             ),
         )
@@ -479,7 +492,8 @@ def search_decks(q="", fmt="", archetype="", strategy="", card_id=None,
         "SELECT deck_num, name, author, format, archetype, archetypes, strategy,"
         " strategies, cover_card,"
         " views, price, pretty_url, excerpt, tournament_name, tournament_place,"
-        " tournament_players, submit_date, main_json, extra_json, side_json"
+        " tournament_players, submit_date, source, source_url,"
+        " main_json, extra_json, side_json"
         " FROM decks" + clause + " ORDER BY " + order + " LIMIT ? OFFSET ?",
         params + [per_page, (page - 1) * per_page],
     )
@@ -495,6 +509,70 @@ def search_decks(q="", fmt="", archetype="", strategy="", card_id=None,
     return {"total": total, "page": page, "per_page": per_page, "items": items}
 
 
+def random_deck(formats=None, archetypes=None, strategies=None, q=""):
+    """Un mazzo a caso fra quelli che soddisfano i filtri, o None.
+
+    Formati, archetipi e strategie sono liste: valgono in OR fra loro e in
+    AND fra categorie diverse ("un mazzo Goat o Edison, ma burn").
+    """
+    where, params = [], []
+
+    def any_of(column, values, json_column=None):
+        values = [v for v in (values or []) if v]
+        if not values:
+            return
+        marks = ",".join("?" * len(values))
+        clause = column + " COLLATE NOCASE IN (" + marks + ")"
+        params.extend(values)
+        if json_column:
+            likes = " OR ".join([json_column + " LIKE ?"] * len(values))
+            clause = "(" + clause + " OR " + likes + ")"
+            params.extend('%"' + v + '"%' for v in values)
+        where.append(clause)
+
+    any_of("format", formats)
+    any_of("archetype", archetypes, "archetypes")
+    any_of("strategy", strategies, "strategies")
+    if q:
+        where.append("(name LIKE ? OR author LIKE ?)")
+        params += ["%" + q + "%", "%" + q + "%"]
+
+    clause = (" WHERE " + " AND ".join(where)) if where else ""
+    row = connect().execute(
+        "SELECT deck_num FROM decks" + clause + " ORDER BY RANDOM() LIMIT 1",
+        params,
+    ).fetchone()
+    return row["deck_num"] if row else None
+
+
+def count_decks(formats=None, archetypes=None, strategies=None, q=""):
+    """Quanti mazzi pescherebbe random_deck con gli stessi filtri."""
+    where, params = [], []
+    for column, values, json_column in (
+        ("format", formats, None),
+        ("archetype", archetypes, "archetypes"),
+        ("strategy", strategies, "strategies"),
+    ):
+        values = [v for v in (values or []) if v]
+        if not values:
+            continue
+        marks = ",".join("?" * len(values))
+        clause = column + " COLLATE NOCASE IN (" + marks + ")"
+        params.extend(values)
+        if json_column:
+            likes = " OR ".join([json_column + " LIKE ?"] * len(values))
+            clause = "(" + clause + " OR " + likes + ")"
+            params.extend('%"' + v + '"%' for v in values)
+        where.append(clause)
+    if q:
+        where.append("(name LIKE ? OR author LIKE ?)")
+        params += ["%" + q + "%", "%" + q + "%"]
+    clause = (" WHERE " + " AND ".join(where)) if where else ""
+    return connect().execute(
+        "SELECT COUNT(*) AS n FROM decks" + clause, params
+    ).fetchone()["n"]
+
+
 def get_deck(deck_num):
     row = connect().execute(
         "SELECT * FROM decks WHERE deck_num=?", (deck_num,)
@@ -504,6 +582,7 @@ def get_deck(deck_num):
     d = dict(row)
     d["archetypes"] = json.loads(d["archetypes"] or "[]")
     d["strategies"] = json.loads(d["strategies"] or "[]")
+    d["unresolved"] = json.loads(d["unresolved"] or "[]")
     for zone in ("main", "extra", "side"):
         d[zone] = json.loads(d.pop(zone + "_json") or "[]")
     return d

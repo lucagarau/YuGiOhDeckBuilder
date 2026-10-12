@@ -244,3 +244,34 @@ input:focus, select:focus { outline: 2px solid var(--blue); outline-offset: -1px
   .filters, .results, .panel, .progress { padding-left: 14px; padding-right: 14px; }
   .deck-grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
 }
+
+/* ---------------------------------------------------------- random */
+
+.random-panel { border-bottom: 1px solid var(--line); }
+.random-grid {
+  display: grid; gap: 16px;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+.pick { display: flex; flex-direction: column; gap: 6px; align-items: stretch; }
+.pick > span { font-size: 13px; color: var(--muted); }
+.pick select[multiple] { padding: 4px; }
+.pick select[multiple] option { padding: 3px 6px; border-radius: 4px; }
+.pick select[multiple] option:checked {
+  background: var(--accent) linear-gradient(0deg, var(--accent), var(--accent));
+  color: #1a1407;
+}
+.chips { display: flex; flex-wrap: wrap; gap: 5px; min-height: 22px; }
+.chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 12px; padding: 3px 8px; border-radius: 99px;
+  background: var(--accent-soft); color: var(--accent); border: 1px solid #4b3d19;
+}
+.chip button {
+  background: none; border: none; color: inherit; cursor: pointer;
+  font-size: 14px; line-height: 1; padding: 0;
+}
+.random-actions {
+  display: flex; align-items: center; gap: 12px;
+  flex-wrap: wrap; margin-top: 16px;
+}
+.random-actions .muted { margin: 0; }

@@ -162,6 +162,16 @@ class Handler(BaseHTTPRequestHandler):
         if path.startswith("/api/img/"):
             return self._image(path, query)
 
+        if path == "/api/decks/random":
+            return self._random(query)
+        if path == "/api/decks/pool":
+            return self._json({"pool": db.count_decks(
+                self._many(query, "format"),
+                self._many(query, "archetype"),
+                self._many(query, "strategy"),
+                self._one(query, "q"),
+            )})
+
         if path.startswith("/api/decks/"):
             rest = path[len("/api/decks/"):].strip("/")
             parts = rest.split("/")
@@ -179,6 +189,28 @@ class Handler(BaseHTTPRequestHandler):
         values = query.get(key) or []
         return values[0].strip() if values else default
 
+    def _many(self, query, key):
+        """Parametri ripetibili: ?format=A&format=B."""
+        out = []
+        for raw in query.get(key) or []:
+            out.extend(v.strip() for v in raw.split("|") if v.strip())
+        return out
+
+    def _random(self, query):
+        formats = self._many(query, "format")
+        archetypes = self._many(query, "archetype")
+        strats = self._many(query, "strategy")
+        text = self._one(query, "q")
+
+        pool = db.count_decks(formats, archetypes, strats, text)
+        deck_num = db.random_deck(formats, archetypes, strats, text)
+        if deck_num is None:
+            return self._json(
+                {"error": "Nessun mazzo corrisponde ai criteri scelti",
+                 "pool": 0}, 404)
+        # Stessa risposta del dettaglio, piu' la dimensione del sorteggio.
+        self._deck_detail(deck_num, extra={"pool": pool})
+
     def _search(self, query):
         result = db.search_decks(
             q=self._one(query, "q"),
@@ -192,7 +224,7 @@ class Handler(BaseHTTPRequestHandler):
         )
         return self._json(result)
 
-    def _deck_detail(self, deck_num):
+    def _deck_detail(self, deck_num, extra=None):
         deck = db.get_deck(deck_num)
         if not deck:
             return self._error(404, "Mazzo non presente in archivio")
@@ -222,6 +254,8 @@ class Handler(BaseHTTPRequestHandler):
         ]
         deck["ydk_preview"] = ydk.build(deck)
         deck["ydk_filename"] = ydk.filename(deck)
+        if extra:
+            deck.update(extra)
         return self._json(deck)
 
     def _deck_ydk(self, deck_num):
@@ -299,6 +333,7 @@ class Handler(BaseHTTPRequestHandler):
             pages_per_format=pages,
             formats=formats,
             with_cards=bool(body.get("with_cards", True)),
+            with_tagforce=bool(body.get("with_tagforce", True)),
         )
         return self._json({"started": started, "update": updater.status()})
 

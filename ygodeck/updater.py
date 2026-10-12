@@ -6,7 +6,7 @@ l'interfaccia interroga stato() per la barra di avanzamento.
 import threading
 import time
 
-from . import db, sources, strategies
+from . import db, sources, strategies, tagforce
 
 _lock = threading.Lock()
 _state = {
@@ -47,7 +47,8 @@ def is_running():
         return _state["running"]
 
 
-def start(pages_per_format=5, formats=None, with_cards=True):
+def start(pages_per_format=5, formats=None, with_cards=True,
+          with_tagforce=True):
     """Avvia l'aggiornamento. Restituisce False se ne sta gia' girando uno."""
     with _lock:
         if _state["running"]:
@@ -67,14 +68,67 @@ def start(pages_per_format=5, formats=None, with_cards=True):
         )
     thread = threading.Thread(
         target=_run,
-        args=(int(pages_per_format), formats, bool(with_cards)),
+        args=(int(pages_per_format), formats, bool(with_cards),
+              bool(with_tagforce)),
         daemon=True,
     )
     thread.start()
     return True
 
 
-def _run(pages_per_format, formats, with_cards):
+def _ingest_tagforce(arch_map, name_index, tagger):
+    """Mazzi della saga Tag Force dal wiki: ~3.500 mazzi in poche richieste."""
+    _log("Tag Force: cerco le pagine dei personaggi sul wiki...")
+    pages = tagforce.fetch_character_pages()
+    default_game = {}
+    for title, games in pages.items():
+        # Se il personaggio compare in un solo gioco, quello e' anche il
+        # gioco dei mazzi privi di intestazione nella pagina.
+        if len(games) == 1:
+            default_game[title] = next(iter(games))
+    titles = sorted(pages)
+    titles += [t for t in tagforce.RECIPE_PAGES if t not in pages]
+    _log("Tag Force: %d pagine da leggere." % len(titles))
+
+    card_index = tagforce.build_name_index(
+        db.connect().execute("SELECT id, name FROM cards")
+    )
+
+    # Un mazzo puo' comparire su piu' pagine: conta una volta sola.
+    seen = set()
+    for i in range(0, len(titles), tagforce.BATCH):
+        chunk = titles[i : i + tagforce.BATCH]
+        texts = tagforce.fetch_wikitext(chunk)
+        batch = []
+        for title, text in texts.items():
+            fallback = tagforce.RECIPE_PAGES.get(title) or default_game.get(title)
+            for parsed in tagforce.parse_page(text, default_game=fallback):
+                deck = tagforce.to_deck(parsed, title, card_index)
+                if not deck:
+                    continue
+                deck["archetypes"] = sources.derive_archetypes(
+                    deck["name"], deck["main"], deck["extra"], arch_map, name_index
+                )
+                deck["archetype"] = (
+                    deck["archetypes"][0] if deck["archetypes"] else ""
+                )
+                deck["strategies"] = tagger.tag(
+                    deck["name"], deck["main"], deck["extra"]
+                )
+                batch.append(deck)
+        if batch:
+            # Le pagine possono ripetere lo stesso mazzo; l'ultimo vince.
+            unique = {d["deck_num"]: d for d in batch}
+            db.upsert_decks(list(unique.values()))
+            seen.update(unique)
+        _log("Tag Force: %d/%d pagine, %d mazzi." % (
+            min(i + tagforce.BATCH, len(titles)), len(titles), len(seen)))
+
+    db.set_meta("last_tagforce_update", db.now_iso())
+    return len(seen)
+
+
+def _run(pages_per_format, formats, with_cards, with_tagforce=True):
     try:
         formats = [f for f in (formats or sources.FORMATS) if f in sources.FORMATS]
         if not formats:
@@ -155,6 +209,14 @@ def _run(pages_per_format, formats, with_cards):
                     deck_total += len(normalized)
                 done += 1
                 _set(done=done, decks_saved=deck_total)
+
+        if with_tagforce:
+            _set(phase="tagforce")
+            try:
+                deck_total += _ingest_tagforce(arch_map, name_index, tagger)
+            except tagforce.TagForceError as exc:
+                _log("Tag Force saltato: %s" % exc)
+            _set(decks_saved=deck_total)
 
         # I mazzi gia' in archivio da prima di questa funzione non hanno
         # ancora una strategia: si ricalcola senza riscaricarli.

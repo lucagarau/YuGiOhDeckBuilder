@@ -9,6 +9,8 @@ const state = {
   deck: null,
   pollTimer: null,
   strategyLabels: {},
+  randomArchetypes: [],
+  lastRandom: null,
 };
 
 function imgUrl(id, size) {
@@ -88,6 +90,12 @@ async function loadFilters() {
       .join("");
     boxes.dataset.filled = "1";
   }
+
+  fillMulti($("#rndFormats"), formats.in_db.map((f) => [f.name, `${f.name} (${f.count})`]));
+  fillMulti(
+    $("#rndStrategies"),
+    strategies.in_db.map((s) => [s.key, `${s.label} (${s.count})`])
+  );
 
   $("#archetypeList").innerHTML = archetypes.in_db
     .map((a) => `<option value="${escapeHtml(a.name)}">${a.count} mazzi</option>`)
@@ -183,6 +191,79 @@ function deckCard(d) {
   </article>`;
 }
 
+
+// ------------------------------------------------------------- random
+
+function fillMulti(select, pairs) {
+  const chosen = new Set(Array.from(select.selectedOptions).map((o) => o.value));
+  select.innerHTML = "";
+  for (const [value, label] of pairs) {
+    const opt = document.createElement("option");
+    opt.value = value;
+    opt.textContent = label;
+    opt.selected = chosen.has(value);
+    select.appendChild(opt);
+  }
+}
+
+function multiValues(select) {
+  return Array.from(select.selectedOptions).map((o) => o.value);
+}
+
+function renderChips() {
+  $("#rndArchetypeChips").innerHTML = state.randomArchetypes
+    .map(
+      (a, i) =>
+        `<span class="chip">${escapeHtml(a)}<button data-i="${i}" aria-label="Rimuovi">&times;</button></span>`
+    )
+    .join("");
+  $("#rndArchetypeChips")
+    .querySelectorAll("button")
+    .forEach((b) =>
+      b.addEventListener("click", () => {
+        state.randomArchetypes.splice(Number(b.dataset.i), 1);
+        renderChips();
+        updatePool();
+      })
+    );
+}
+
+function randomParams() {
+  const params = new URLSearchParams();
+  for (const f of multiValues($("#rndFormats"))) params.append("format", f);
+  for (const s of multiValues($("#rndStrategies"))) params.append("strategy", s);
+  for (const a of state.randomArchetypes) params.append("archetype", a);
+  return params;
+}
+
+async function updatePool() {
+  const params = randomParams();
+  params.set("count_only", "1");
+  try {
+    const data = await api("/api/decks/pool?" + params.toString());
+    $("#rndPool").textContent = data.pool
+      ? `${data.pool.toLocaleString("it-IT")} mazzi fra cui pescare`
+      : "Nessun mazzo con questi criteri";
+    $("#btnDraw").disabled = !data.pool;
+  } catch {
+    $("#rndPool").textContent = "";
+  }
+}
+
+async function drawRandom() {
+  const btn = $("#btnDraw");
+  btn.disabled = true;
+  try {
+    const deck = await api("/api/decks/random?" + randomParams().toString());
+    state.lastRandom = true;
+    showDeck(deck);
+  } catch (err) {
+    $("#rndPool").textContent = err.message;
+  } finally {
+    btn.disabled = false;
+  }
+}
+
 // ------------------------------------------------------------- dettaglio
 
 async function openDeck(deckNum) {
@@ -192,6 +273,7 @@ async function openDeck(deckNum) {
   $("#deckMeta").textContent = "";
   $("#deckBody").innerHTML = "";
 
+  state.lastRandom = false;
   let deck;
   try {
     deck = await api("/api/decks/" + deckNum);
@@ -199,7 +281,13 @@ async function openDeck(deckNum) {
     $("#deckBody").innerHTML = `<p class="warn">Errore: ${escapeHtml(err.message)}</p>`;
     return;
   }
+  showDeck(deck);
+}
+
+function showDeck(deck) {
+  $("#overlay").classList.remove("hidden");
   state.deck = deck;
+  $("#btnReroll").classList.toggle("hidden", !state.lastRandom);
 
   $("#deckTitle").textContent = deck.name;
   const bits = [deck.author || "anonimo", deck.format];
@@ -213,7 +301,14 @@ async function openDeck(deckNum) {
   if (deck.submit_date) bits.push(deck.submit_date);
   $("#deckMeta").textContent = bits.filter(Boolean).join(" · ");
 
-  $("#linkSource").href = "https://ygoprodeck.com/deck/" + encodeURIComponent(deck.pretty_url || "");
+  const link = $("#linkSource");
+  if (deck.source === "tagforce" && deck.source_url) {
+    link.href = deck.source_url;
+    link.textContent = "Apri sul wiki";
+  } else {
+    link.href = "https://ygoprodeck.com/deck/" + encodeURIComponent(deck.pretty_url || "");
+    link.textContent = "Apri su YGOPRODeck";
+  }
 
   const parts = [];
   if (deck.side_warning)
@@ -224,6 +319,14 @@ async function openDeck(deckNum) {
     parts.push(
       `<p class="warn">${deck.missing_cards.length} carte non sono nel database locale ` +
         `(il .ydk resta corretto, usa i passcode). Aggiorna il DB per i nomi.</p>`
+    );
+
+  if (deck.unresolved && deck.unresolved.length)
+    parts.push(
+      `<p class="warn">${deck.unresolved.length} carte di questo mazzo non esistono ` +
+        `nel database TCG (esclusive OCG o del videogioco) e non sono nel .ydk: ` +
+        `${escapeHtml(deck.unresolved.slice(0, 8).join(", "))}` +
+        `${deck.unresolved.length > 8 ? "..." : ""}</p>`
     );
 
   const desc = stripHtml(deck.description) || stripHtml(deck.excerpt);
@@ -410,6 +513,34 @@ function init() {
     state.page += 1;
     search();
     window.scrollTo({ top: 0, behavior: "smooth" });
+  });
+
+  $("#btnRandomMode").addEventListener("click", () => {
+    const panel = $("#randomPanel");
+    panel.classList.toggle("hidden");
+    if (!panel.classList.contains("hidden")) updatePool();
+  });
+  $("#rndFormats").addEventListener("change", updatePool);
+  $("#rndStrategies").addEventListener("change", updatePool);
+  $("#rndArchetypeInput").addEventListener("keydown", (ev) => {
+    if (ev.key !== "Enter") return;
+    ev.preventDefault();
+    const value = ev.target.value.trim();
+    if (value && !state.randomArchetypes.includes(value)) {
+      state.randomArchetypes.push(value);
+      renderChips();
+      updatePool();
+    }
+    ev.target.value = "";
+  });
+  $("#btnDraw").addEventListener("click", drawRandom);
+  $("#btnReroll").addEventListener("click", drawRandom);
+  $("#btnRandomReset").addEventListener("click", () => {
+    $("#rndFormats").selectedIndex = -1;
+    $("#rndStrategies").selectedIndex = -1;
+    state.randomArchetypes = [];
+    renderChips();
+    updatePool();
   });
 
   $("#btnClose").addEventListener("click", closeDeck);
