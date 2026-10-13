@@ -131,6 +131,31 @@ JSON, ne' il sito.
   mostri dell'Extra nel Main, e dice quante carte ha spostato. Il limite
   delle tre copie vale su tutto il mazzo e conta i passcode canonici,
   quindi tre artwork diversi della stessa carta contano tre.
+- **Liste di divieti.** `banlist_info` arriva dallo stesso endpoint delle
+  carte e distingue TCG, OCG e Goat. In archivio restano le parole
+  (`Forbidden`, `Limited`...), ma l'export le converte nel numero massimo
+  di copie, che e' quello che la validazione confronta; il campo esiste
+  solo per le 316 carte che ne hanno uno. Il formato di un mazzo
+  dell'archivio si deduce dal nome (`formatOf`), e i mazzi Tag Force non
+  ne hanno nessuno: sono videogiochi, nessuna lista li governa.
+- **Nomi in italiano.** Secondo giro sullo stesso endpoint con
+  `language=it`, innestato per passcode: 9.254 delle 11.556 carte
+  esportate. L'indice di ricerca contiene **entrambe** le lingue, perche'
+  chi gioca online conosce i nomi inglesi anche con l'interfaccia in
+  italiano. Se la traduzione non arriva, l'aggiornamento non fallisce:
+  resta tutto in inglese.
+- **ydke e link condivisi.** Stessa codifica: passcode come interi a 32
+  bit little-endian in base64. Il link usa la variante sicura per URL e
+  sta nel frammento, quindi non raggiunge mai un server - cosa necessaria,
+  visto che un server non c'e'.
+- **Suggerimenti.** Contare le presenze grezze restituisce solo staple
+  (per Black Luster Soldier uscirebbe Heavy Storm). Si divide per quanto
+  la carta e' comune in generale, e restano le sinergie vere. Gli insiemi
+  dei mazzi si costruiscono alla prima richiesta, come gli altri indici.
+- **Probabilita' di apertura.** Ipergeometrica calcolata con i logaritmi
+  dei fattoriali: con i fattoriali diretti si va in overflow gia' a
+  numeri piccoli. Il test verifica contro un valore noto (tre copie su
+  quaranta carte, cinque pescate: 33,76%).
 - **Artwork alternativi.** Una carta puo' avere piu' passcode (Ash Blossom e'
   sia `14558127` che `14558128`). I mazzi usano anche quelli secondari, che
   la tabella `card_aliases` riconduce alla carta vera; il `.ydk` conserva

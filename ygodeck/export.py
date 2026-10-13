@@ -21,7 +21,13 @@ CARD_FIELDS = (
     "id", "name", "type", "frame_type", "race", "attribute",
     "level", "atk", "defense", "archetype", "descr",
     "linkval", "link_markers", "scale",
+    "ban_tcg", "ban_ocg", "ban_goat", "name_it", "descr_it",
 )
+
+# Nell'archivio lo stato e' una parola, nell'interfaccia serve il numero
+# massimo di copie: e' quello che la validazione deve confrontare.
+BAN_LIMITS = {"Forbidden": 0, "Limited": 1, "Semi-Limited": 2}
+BAN_FORMATS = {"ban_tcg": "tcg", "ban_ocg": "ocg", "ban_goat": "goat"}
 
 DECK_FIELDS = (
     "deck_num", "name", "author", "format", "archetype", "archetypes",
@@ -85,6 +91,20 @@ def export_all(target_dir=None):
         card["link_markers"] = json.loads(card["link_markers"] or "[]")
         if not card["link_markers"]:
             del card["link_markers"]      # quasi sempre vuota: non pesarla
+
+        # Solo 222 carte su 11.556 sono in una lista: campo assente per
+        # tutte le altre, invece di tre null a testa.
+        ban = {}
+        for column, key in BAN_FORMATS.items():
+            status = card.pop(column)
+            if status in BAN_LIMITS:
+                ban[key] = BAN_LIMITS[status]
+        if ban:
+            card["ban"] = ban
+
+        for key in ("name_it", "descr_it"):
+            if not card[key]:
+                del card[key]
         cards.append(card)
 
     alias_pairs = {
@@ -104,6 +124,8 @@ def export_all(target_dir=None):
         "last_card_update": stats.get("last_card_update"),
         "last_deck_update": stats.get("last_deck_update"),
         "last_tagforce_update": db.get_meta("last_tagforce_update"),
+        "last_italian_update": db.get_meta("last_italian_update"),
+        "ban_formats": ["tcg", "ocg", "goat"],
     }
 
     sizes = {

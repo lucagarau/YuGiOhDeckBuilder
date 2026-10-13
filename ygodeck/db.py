@@ -24,7 +24,12 @@ CREATE TABLE IF NOT EXISTS cards (
     descr       TEXT,
     linkval     INTEGER,
     link_markers TEXT,
-    scale       INTEGER
+    scale       INTEGER,
+    ban_tcg     TEXT,
+    ban_ocg     TEXT,
+    ban_goat    TEXT,
+    name_it     TEXT,
+    descr_it    TEXT
 );
 
 -- Gli artwork alternativi hanno un passcode proprio: i mazzi possono usarlo
@@ -115,6 +120,13 @@ MIGRATIONS = {
         "linkval": "INTEGER",
         "link_markers": "TEXT",
         "scale": "INTEGER",
+        # Stato nelle liste di divieti, per i tre formati che la fonte
+        # distingue: il TCG moderno, l'OCG e il Goat Format.
+        "ban_tcg": "TEXT",
+        "ban_ocg": "TEXT",
+        "ban_goat": "TEXT",
+        "name_it": "TEXT",
+        "descr_it": "TEXT",
     },
     "decks": {
         "strategy": "TEXT",
@@ -214,6 +226,9 @@ def upsert_cards(cards):
             c.get("linkval"),
             json.dumps(c.get("linkmarkers") or []),
             c.get("scale"),
+            (c.get("banlist_info") or {}).get("ban_tcg"),
+            (c.get("banlist_info") or {}).get("ban_ocg"),
+            (c.get("banlist_info") or {}).get("ban_goat"),
         )
         for c in cards
         if c.get("id") is not None
@@ -221,14 +236,16 @@ def upsert_cards(cards):
     conn = connect()
     conn.executemany(
         "INSERT INTO cards(id, name, type, frame_type, race, attribute, level, atk,"
-        " defense, archetype, descr, linkval, link_markers, scale)"
-        " VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?) "
+        " defense, archetype, descr, linkval, link_markers, scale, ban_tcg, ban_ocg, ban_goat)"
+        " VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) "
         "ON CONFLICT(id) DO UPDATE SET name=excluded.name, type=excluded.type,"
         " frame_type=excluded.frame_type, race=excluded.race,"
         " attribute=excluded.attribute, level=excluded.level, atk=excluded.atk,"
         " defense=excluded.defense, archetype=excluded.archetype,"
         " descr=excluded.descr, linkval=excluded.linkval,"
-        " link_markers=excluded.link_markers, scale=excluded.scale",
+        " link_markers=excluded.link_markers, scale=excluded.scale,"
+        " ban_tcg=excluded.ban_tcg, ban_ocg=excluded.ban_ocg,"
+        " ban_goat=excluded.ban_goat",
         rows,
     )
 
@@ -255,8 +272,20 @@ def upsert_cards(cards):
 
 CARD_COLUMNS = (
     "id, name, type, frame_type, race, attribute, level, atk, defense,"
-    " archetype, descr, linkval, link_markers, scale"
+    " archetype, descr, linkval, link_markers, scale,"
+    " ban_tcg, ban_ocg, ban_goat, name_it, descr_it"
 )
+
+
+def update_card_names(mapping):
+    """mapping: {passcode: (nome, effetto)} nella lingua tradotta."""
+    rows = [(n, d, cid) for cid, (n, d) in mapping.items() if n]
+    conn = connect()
+    conn.executemany(
+        "UPDATE cards SET name_it=?, descr_it=? WHERE id=?", rows
+    )
+    conn.commit()
+    return len(rows)
 
 
 def card_archetype_map():

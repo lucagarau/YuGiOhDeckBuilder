@@ -26,6 +26,7 @@ const state = {
   editorReady: false,
   pickerPage: 1,
   movedNote: "",
+  history: [],
 };
 
 async function api(path, options) {
@@ -324,12 +325,30 @@ function showDeck(deck) {
   const desc = stripHtml(deck.excerpt);
   if (desc) parts.push(`<p class="deck-desc">${escapeHtml(desc.slice(0, 600))}</p>`);
 
+  const fmt = Store.formatOf(deck);
+  const issues = Store.banIssues(deck, fmt);
+  if (fmt) {
+    const label = Store.banFormats[fmt];
+    parts.push(
+      issues.length
+        ? `<p class="legal bad"><strong>Non valido in ${label}:</strong> ` +
+            issues.map((i) => `${escapeHtml(i.name)} (${i.label}, ne ha ${i.copies})`).join(", ") +
+            `</p>`
+        : `<p class="legal good">Valido secondo la lista ${label}.</p>`
+    );
+  }
+
   parts.push(zoneHtml("Main Deck", deck.main_cards, deck.main.length));
   parts.push(zoneHtml("Extra Deck", deck.extra_cards, deck.extra.length));
   if (deck.side.length)
     parts.push(zoneHtml("Side Deck", deck.side_cards, deck.side.length));
 
+  parts.push(statsHtml(deck));
+  parts.push(similarHtml(deck));
   $("#deckBody").innerHTML = parts.filter(Boolean).join("");
+  $("#deckBody").querySelectorAll(".similar-item").forEach((b) =>
+    b.addEventListener("click", () => openDeck(Number(b.dataset.num)))
+  );
 }
 
 function zoneHtml(title, entries, total) {
@@ -367,6 +386,174 @@ function zoneHtml(title, entries, total) {
 
 
 
+
+// --------------------------------------------------- lingua delle carte
+
+function applyLanguage() {
+  $("#btnLang").textContent = Store.language.toUpperCase();
+  $("#btnLang").title =
+    Store.language === "it"
+      ? "Nomi in italiano - premi per l'inglese"
+      : "Nomi in inglese - premi per l'italiano";
+}
+
+function toggleLanguage() {
+  Store.setLanguage(Store.language === "it" ? "en" : "it");
+  applyLanguage();
+  // Tutto cio' che mostra un nome va ridisegnato.
+  search();
+  if (state.cardsReady) searchCards();
+  if (state.editing) {
+    editorRender();
+    pickerRender();
+  }
+  if (state.deck) showDeck(Store.deck(state.deck.deck_num) || state.deck);
+}
+
+// ------------------------------------------------- condivisione e stampa
+
+async function copyToClipboard(text, done) {
+  try {
+    await navigator.clipboard.writeText(text);
+    flashMessage(done);
+  } catch {
+    // Senza permesso negli appunti resta la selezione manuale.
+    window.prompt("Copia con Ctrl+C:", text);
+  }
+}
+
+let messageTimer = null;
+function flashMessage(text) {
+  let box = $("#toast");
+  if (!box) {
+    box = document.createElement("div");
+    box.id = "toast";
+    box.className = "toast";
+    document.body.appendChild(box);
+  }
+  box.textContent = text;
+  box.classList.add("show");
+  clearTimeout(messageTimer);
+  messageTimer = setTimeout(() => box.classList.remove("show"), 2200);
+}
+
+function shareLink(deck) {
+  return location.origin + location.pathname + Store.deckToHash(deck);
+}
+
+/** Decklist pronta da stampare, in una finestra pulita. */
+function printDecklist(deck) {
+  const zones = [
+    ["Main Deck", deck.main],
+    ["Extra Deck", deck.extra],
+    ["Side Deck", deck.side],
+  ];
+  const sections = zones
+    .filter(([, ids]) => ids && ids.length)
+    .map(([title, ids]) => {
+      const rows = Store.expand(ids)
+        .map(
+          (e) =>
+            `<tr><td class="q">${e.qty}</td><td>${escapeHtml(e.name)}</td>` +
+            `<td class="t">${escapeHtml(e.type || "")}</td></tr>`
+        )
+        .join("");
+      return `<section><h2>${title} <small>${ids.length} carte</small></h2>
+        <table><tbody>${rows}</tbody></table></section>`;
+    })
+    .join("");
+
+  const win = window.open("", "_blank");
+  if (!win) return flashMessage("Il browser ha bloccato la finestra di stampa.");
+  win.document.write(`<!doctype html><html lang="it"><head>
+    <meta charset="utf-8"><title>${escapeHtml(deck.name || "Decklist")}</title>
+    <style>
+      body { font: 12px/1.45 system-ui, sans-serif; color: #000; margin: 24px; }
+      h1 { font-size: 18px; margin: 0 0 2px; }
+      .meta { color: #555; margin: 0 0 18px; font-size: 11px; }
+      section { break-inside: avoid; margin-bottom: 16px; }
+      h2 { font-size: 13px; margin: 0 0 6px; border-bottom: 1px solid #000;
+           padding-bottom: 3px; }
+      h2 small { font-weight: normal; color: #555; }
+      table { width: 100%; border-collapse: collapse; }
+      td { padding: 2px 4px; border-bottom: 1px solid #ddd; }
+      td.q { width: 28px; font-weight: bold; text-align: right; }
+      td.t { width: 34%; color: #555; font-size: 11px; }
+      @media print { body { margin: 10mm; } }
+    </style></head><body>
+    <h1>${escapeHtml(deck.name || "Decklist")}</h1>
+    <p class="meta">${escapeHtml(deck.author || "")}${deck.author ? " - " : ""}
+      Main ${deck.main.length} - Extra ${deck.extra.length} - Side ${deck.side.length}</p>
+    ${sections}
+  </body></html>`);
+  win.document.close();
+  win.focus();
+  setTimeout(() => win.print(), 300);
+}
+
+// ----------------------------------------------------- statistiche mazzo
+
+function statsHtml(deck) {
+  const s = Store.deckStats(deck);
+  if (!s.size) return "";
+
+  const bar = (items, total) =>
+    items
+      .map(
+        (x) =>
+          `<div class="bar-row"><span class="bar-key">${escapeHtml(String(x.key))}</span>
+             <span class="bar-track"><span class="bar-fill"
+               style="width:${Math.round((x.count / total) * 100)}%"></span></span>
+             <span class="bar-n">${x.count}</span></div>`
+      )
+      .join("");
+
+  const opening = s.opening
+    .map(
+      (o) =>
+        `<div class="bar-row"><span class="bar-key wide">${escapeHtml(o.name)} <em>x${o.qty}</em></span>
+           <span class="bar-track"><span class="bar-fill alt"
+             style="width:${Math.round(o.chance * 100)}%"></span></span>
+           <span class="bar-n">${Math.round(o.chance * 100)}%</span></div>`
+    )
+    .join("");
+
+  const maxLevel = Math.max(1, ...s.levels.map((x) => x.count));
+  const maxAttr = Math.max(1, ...s.attributes.map((x) => x.count));
+
+  return `
+  <section class="zone stats-zone">
+    <div class="zone-head"><h3>Statistiche</h3>
+      <span class="muted">su ${s.size} carte del Main</span></div>
+    <div class="stats-grid">
+      ${s.levels.length ? `<div><h4>Livelli</h4>${bar(s.levels, maxLevel)}</div>` : ""}
+      ${s.attributes.length ? `<div><h4>Attributi</h4>${bar(s.attributes, maxAttr)}</div>` : ""}
+      <div><h4>Probabilita' di aprirla (${s.draws} carte)</h4>${opening}</div>
+    </div>
+  </section>`;
+}
+
+// -------------------------------------------------------- mazzi simili
+
+function similarHtml(deck) {
+  const similar = Store.similarDecks(deck, { limit: 6 });
+  if (!similar.length) return "";
+  const items = similar
+    .map(
+      (x) => `
+      <button class="similar-item" data-num="${x.deck.deck_num}">
+        <strong>${escapeHtml(x.deck.name)}</strong>
+        <span class="muted">${escapeHtml(x.deck.format || "")} - ${x.shared} carte in comune</span>
+      </button>`
+    )
+    .join("");
+  return `
+  <section class="zone">
+    <div class="zone-head"><h3>Mazzi simili</h3></div>
+    <div class="similar-list">${items}</div>
+  </section>`;
+}
+
 // ------------------------------------------------------------- editor
 
 const EMPTY_DECK = () => ({ id: null, name: "", main: [], extra: [], side: [] });
@@ -402,15 +589,34 @@ function editorLoad(deck, { keepId = false } = {}) {
     side: tidy.side,
   };
   $("#edName").value = state.editing.name;
+  state.history = [];
   state.movedNote = moved.length
     ? `${moved.length} cart${moved.length > 1 ? "e sono state spostate" : "a e' stata spostata"} nella zona corretta.`
     : "";
   editorRender();
 }
 
+/** Fotografia del mazzo prima di una modifica, per poterla annullare. */
+function editorSnapshot() {
+  const d = state.editing;
+  state.history.push(JSON.stringify([d.main, d.extra, d.side]));
+  if (state.history.length > 50) state.history.shift();
+}
+
+function editorUndo() {
+  const previous = state.history.pop();
+  if (!previous) return;
+  const [main, extra, side] = JSON.parse(previous);
+  Object.assign(state.editing, { main, extra, side });
+  state.movedNote = "";
+  editorRender();
+}
+
 function editorRender() {
   const deck = state.editing;
-  const check = Store.validateDeck(deck);
+  const format = $("#edFormat") ? $("#edFormat").value : "";
+  const check = Store.validateDeck(deck, format);
+  if ($("#edUndo")) $("#edUndo").disabled = !state.history.length;
 
   $("#edCounts").innerHTML = ["main", "extra", "side"]
     .map((zone) => {
@@ -452,22 +658,32 @@ function editorTile(e, zone) {
 function editorAdd(id, toSide) {
   const deck = state.editing;
   const zone = toSide ? "side" : Store.zoneFor(id);
-  if (Store.copiesOf(deck, id) >= 3) {
-    return editorFlash("Hai gia' tre copie di questa carta.");
+  const max = Store.banLimit(id, $("#edFormat").value);
+  if (Store.copiesOf(deck, id) >= max) {
+    const limite = Store.banLimit(id, $("#edFormat").value);
+    return editorFlash(
+      limite < 3
+        ? `Questa carta e' ${Store.banStatus(id, $("#edFormat").value).label} in questo formato.`
+        : "Hai gia' tre copie di questa carta."
+    );
   }
   if (deck[zone].length >= Store.limits[zone].max) {
     const label = { main: "Il Main", extra: "L'Extra", side: "Il Side" }[zone];
     return editorFlash(`${label} Deck e' al massimo.`);
   }
+  editorSnapshot();
   deck[zone].push(id);
   state.movedNote = "";
   editorRender();
+  renderSuggestions();
 }
 
 function editorRemove(id, zone) {
   const list = state.editing[zone];
   const at = list.lastIndexOf(id);
-  if (at >= 0) list.splice(at, 1);
+  if (at < 0) return;
+  editorSnapshot();
+  list.splice(at, 1);
   state.movedNote = "";
   editorRender();
 }
@@ -479,6 +695,45 @@ function editorFlash(message) {
   box.innerHTML = `<div class="flash">${escapeHtml(message)}</div>`;
   clearTimeout(flashTimer);
   flashTimer = setTimeout(editorRender, 2200);
+}
+
+function renderSuggestions() {
+  const box = $("#edSuggest");
+  if (!box) return;
+  const deck = state.editing;
+  const seeds = [...deck.main, ...deck.extra];
+  if (seeds.length < 3) {
+    box.classList.add("hidden");
+    return;
+  }
+  // Le carte piu' rappresentative sono quelle che il mazzo ripete.
+  const counts = new Map();
+  for (const id of seeds) counts.set(id, (counts.get(id) || 0) + 1);
+  const seeds2 = [...counts.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 10)
+    .map(([id]) => id);
+
+  const found = Store.suggestCards(seeds2, { limit: 10 });
+  if (!found.length) {
+    box.classList.add("hidden");
+    return;
+  }
+  box.classList.remove("hidden");
+  $("#edSuggestList").innerHTML = found
+    .map(
+      (x) => `
+      <button class="suggest-item" data-id="${x.id}" title="In ${x.decks} mazzi con queste carte">
+        <img loading="lazy" src="${imgUrl(x.id)}" alt=""
+             data-card-id="${x.id}" onerror="Store.imgFallback(this)">
+        <span class="suggest-name">${escapeHtml(x.name)}</span>
+        <span class="muted">${Math.round(x.share * 100)}%</span>
+      </button>`
+    )
+    .join("");
+  $("#edSuggestList").querySelectorAll(".suggest-item").forEach((b) =>
+    b.addEventListener("click", () => editorAdd(Number(b.dataset.id), false))
+  );
 }
 
 // ---------------------------------------------------- scelta delle carte
@@ -586,6 +841,7 @@ function showView(name) {
     if (!state.editing) editorLoad(EMPTY_DECK());
     else editorRender();
     pickerRender();
+    renderSuggestions();
   }
 }
 
@@ -990,6 +1246,41 @@ function init() {
     if (ev.target === $("#cardOverlay")) closeCard();
   });
 
+  $("#btnLang").addEventListener("click", toggleLanguage);
+
+  // --- condivisione dalla scheda del mazzo ---
+  $("#btnYdke").addEventListener("click", () =>
+    state.deck && copyToClipboard(Store.buildYdke(state.deck), "Codice ydke copiato.")
+  );
+  $("#btnLink").addEventListener("click", () =>
+    state.deck && copyToClipboard(shareLink(state.deck), "Link copiato.")
+  );
+  $("#btnPrint").addEventListener("click", () => state.deck && printDecklist(state.deck));
+
+  // --- condivisione dall'editor ---
+  $("#edYdke").addEventListener("click", () =>
+    copyToClipboard(Store.buildYdke(state.editing), "Codice ydke copiato.")
+  );
+  $("#edLink").addEventListener("click", () =>
+    copyToClipboard(shareLink(state.editing), "Link copiato.")
+  );
+  $("#edPrint").addEventListener("click", () => printDecklist(state.editing));
+  $("#edPasteYdke").addEventListener("click", () => {
+    const text = window.prompt("Incolla qui il codice ydke://");
+    if (!text) return;
+    const parsed = Store.parseYdke(text);
+    if (!parsed) return editorFlash("Non sembra un codice ydke valido.");
+    parsed.name = state.editing.name || "Mazzo incollato";
+    editorLoad(parsed);
+    renderSuggestions();
+  });
+  $("#edFormat").addEventListener("change", () => {
+    editorRender();
+    pickerRender();
+  });
+  $("#edUndo").addEventListener("click", editorUndo);
+  $("#edSuggestRefresh").addEventListener("click", renderSuggestions);
+
   $("#tabDecks").addEventListener("click", () => showView("decks"));
   $("#tabCards").addEventListener("click", () => showView("cards"));
   $("#tabEditor").addEventListener("click", () => showView("editor"));
@@ -1142,9 +1433,18 @@ function init() {
   Store.load()
     .then(() => {
       applyCapabilities();
+      applyLanguage();
       showStats();
       loadFilters();
       search();
+      // Un mazzo condiviso arriva nell'indirizzo: si apre nell'editor.
+      const shared = Store.deckFromHash(location.hash);
+      if (shared && shared.main.length) {
+        showView("editor");
+        editorLoad(shared);
+        renderSuggestions();
+        flashMessage("Mazzo aperto dal link.");
+      }
       if (Store.capabilities.update) {
         api("api/update").then((u) => u.running && startPolling()).catch(() => {});
       }

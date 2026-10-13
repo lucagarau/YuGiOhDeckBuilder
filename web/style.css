@@ -523,3 +523,86 @@ input:focus, select:focus { outline: 2px solid var(--blue); outline-offset: -1px
   .editor-picker { position: static; }
   .picker-grid { max-height: none; }
 }
+
+/* ------------------------------------------------ legalita' e avvisi */
+
+.legal {
+  margin: 0 0 14px; padding: 9px 12px; border-radius: 8px; font-size: 13px;
+}
+.legal.good { background: #162a21; border: 1px solid #22493a; color: #71c69b; }
+.legal.bad { background: #2a1613; border: 1px solid #5a2b24; color: #e2887c; }
+
+.toast {
+  position: fixed; left: 50%; bottom: 26px; transform: translateX(-50%) translateY(14px);
+  background: var(--bg-card); color: var(--text);
+  border: 1px solid var(--accent); border-radius: 9px;
+  padding: 10px 18px; font-size: 14px; z-index: 90;
+  opacity: 0; pointer-events: none; transition: opacity .18s, transform .18s;
+}
+.toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+/* -------------------------------------------------------- statistiche */
+
+.stats-grid {
+  display: grid; gap: 20px;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+}
+.stats-grid h4 {
+  font-size: 12px; color: var(--muted); margin: 0 0 8px;
+  text-transform: uppercase; letter-spacing: .4px; font-weight: 600;
+}
+.bar-row {
+  display: grid; grid-template-columns: 54px 1fr 38px;
+  gap: 8px; align-items: center; margin-bottom: 5px; font-size: 12px;
+}
+.bar-key { color: var(--muted); font-variant-numeric: tabular-nums; }
+.bar-key.wide {
+  grid-column: auto; overflow: hidden; text-overflow: ellipsis;
+  white-space: nowrap; color: var(--text);
+}
+.bar-key em { color: var(--muted); font-style: normal; }
+.bar-row:has(.bar-key.wide) { grid-template-columns: minmax(0, 1fr) 90px 38px; }
+.bar-track { height: 8px; background: #222b3a; border-radius: 99px; overflow: hidden; }
+.bar-fill { display: block; height: 100%; background: var(--accent); border-radius: 99px; }
+.bar-fill.alt { background: #4a8fd6; }
+.bar-n { text-align: right; color: var(--muted); font-variant-numeric: tabular-nums; }
+
+/* ------------------------------------------------------- mazzi simili */
+
+.similar-list { display: grid; gap: 8px; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); }
+.similar-item {
+  text-align: left; cursor: pointer; font: inherit;
+  display: flex; flex-direction: column; gap: 3px;
+  background: var(--bg-card); color: var(--text);
+  border: 1px solid var(--line); border-radius: 8px; padding: 9px 12px;
+}
+.similar-item:hover { border-color: var(--accent); }
+.similar-item .muted { font-size: 11px; }
+
+/* ------------------------------------------------------- suggerimenti */
+
+.suggest { margin: 12px 0; border-top: 1px solid var(--line); padding-top: 12px; }
+.suggest-head {
+  display: flex; justify-content: space-between; align-items: center;
+  font-size: 13px; margin-bottom: 8px;
+}
+.suggest-head .btn { padding: 4px 10px; font-size: 12px; }
+.suggest-list { display: grid; gap: 5px; max-height: 240px; overflow-y: auto; }
+.suggest-item {
+  display: grid; grid-template-columns: 26px minmax(0, 1fr) auto;
+  gap: 8px; align-items: center; cursor: pointer; font: inherit; text-align: left;
+  background: var(--bg-card); color: var(--text);
+  border: 1px solid var(--line); border-radius: 7px; padding: 4px 8px;
+}
+.suggest-item:hover { border-color: var(--accent); }
+.suggest-item img { width: 26px; border-radius: 3px; display: block; }
+.suggest-name {
+  font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.suggest-item .muted { font-size: 11px; font-variant-numeric: tabular-nums; }
+
+/* ------------------------------------------------ barra editor, riga 2 */
+
+.editor-bar.second { border-top: none; padding-top: 0; }
+.editor-bar .inline { display: flex; align-items: center; gap: 8px; font-size: 14px; }
+.editor-bar .spacer { flex: 1 1 auto; }

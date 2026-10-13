@@ -48,6 +48,7 @@ const Store = (() => {
   }
 
   async function load() {
+    initLanguage();
     const capabilities = await probeCapabilities();
     // La sonda delle immagini serve solo senza proxy locale, e gira in
     // parallelo ai dati per non allungare l'attesa iniziale.
@@ -71,7 +72,7 @@ const Store = (() => {
     // Campi derivati, calcolati una volta sola: la ricerca li legge a ogni
     // battuta di tasto e non puo' permettersi di ricostruirli ogni volta.
     for (const d of decks) {
-      d._search = `${d.name || ""}\u0000${d.author || ""}\u0000${d.excerpt || ""}`
+      d._search = `${d.name || ""}|${d.author || ""}|${d.excerpt || ""}`
         .toLowerCase();
       d._format = (d.format || "").toLowerCase();
       d._archetypes = new Set(d.archetypes || []);
@@ -164,7 +165,7 @@ const Store = (() => {
       entries.push({
         id,
         qty,
-        name: (c && c.name) || `Carta sconosciuta (${id})`,
+        name: cardName(c) || `Carta sconosciuta (${id})`,
         type: c && c.type,
         frame_type: c && c.frame_type,
         race: c && c.race,
@@ -173,7 +174,7 @@ const Store = (() => {
         atk: c && c.atk,
         defense: c && c.defense,
         archetype: c && c.archetype,
-        descr: c && c.descr,
+        descr: cardText(c),
         linkval: c && c.linkval,
         link_markers: (c && c.link_markers) || [],
         scale: c && c.scale,
@@ -401,10 +402,16 @@ const Store = (() => {
     return [...cardsById.values()].map((c) => {
       const kind = (c.type || "").toLowerCase();
       return Object.assign({}, c, {
+        name: cardName(c),
+        descr: cardText(c),
+        name_en: c.name,
         group: group(c),
         // Cercare anche nell'effetto e' il motivo per cui si viene qui:
         // "banish", "negate", "once per turn".
-        _search: `${c.name || ""}\u0000${c.descr || ""}`.toLowerCase(),
+        // Cercabile in entrambe le lingue: chi gioca online conosce i
+        // nomi inglesi anche se usa l'interfaccia in italiano.
+        _search: [c.name, c.descr, c.name_it, c.descr_it]
+          .filter(Boolean).join("|").toLowerCase(),
         _deckCount: cardDeckCount(c.id),
         // Livello, rango e valore Link occupano la stessa casella.
         _rank: c.linkval != null ? c.linkval : c.level,
@@ -505,7 +512,7 @@ const Store = (() => {
    * Controlla un mazzo secondo le regole ufficiali: dimensioni delle zone
    * e massimo tre copie **in tutto il mazzo**, non per zona.
    */
-  function validateDeck(deck) {
+  function validateDeck(deck, format) {
     const errors = [];
     const counts = {
       main: (deck.main || []).length,
@@ -531,9 +538,17 @@ const Store = (() => {
       }
     }
     for (const [id, n] of copies) {
-      if (n > MAX_COPIES) {
+      // Il limite generale e' tre copie, ma la lista del formato puo'
+      // abbassarlo fino a zero.
+      const limit = banLimit(id, format);
+      if (n > limit) {
         const c = card(id);
-        errors.push(`${(c && c.name) || id}: ${n} copie, il massimo e' ${MAX_COPIES}.`);
+        const name = cardName(c) || id;
+        errors.push(
+          limit < MAX_COPIES
+            ? `${name}: ${BAN_LABELS[limit]} in ${BAN_FORMAT_LABELS[format]}, ne hai ${n}.`
+            : `${name}: ${n} copie, il massimo e' ${MAX_COPIES}.`
+        );
       }
     }
 
@@ -541,13 +556,13 @@ const Store = (() => {
     for (const id of deck.extra || []) {
       if (zoneFor(id) !== "extra") {
         const c = card(id);
-        errors.push(`${(c && c.name) || id} non va nell'Extra Deck.`);
+        errors.push(`${cardName(c) || id} non va nell'Extra Deck.`);
       }
     }
     for (const id of deck.main || []) {
       if (zoneFor(id) === "extra") {
         const c = card(id);
-        errors.push(`${(c && c.name) || id} va nell'Extra Deck.`);
+        errors.push(`${cardName(c) || id} va nell'Extra Deck.`);
       }
     }
 
@@ -669,6 +684,345 @@ const Store = (() => {
     }
   }
 
+
+  // ---------------------------------------------------------- lingua
+
+  let lang = "it";
+
+  function setLanguage(value) {
+    if (value === lang) return;
+    lang = value === "en" ? "en" : "it";
+    cardList = null;          // i nomi mostrati cambiano: indice da rifare
+    try {
+      localStorage.setItem("ygodeck.lang", lang);
+    } catch { /* senza memoria la scelta vale solo per questa visita */ }
+  }
+
+  function initLanguage() {
+    try {
+      const saved = localStorage.getItem("ygodeck.lang");
+      if (saved === "en" || saved === "it") lang = saved;
+    } catch { /* resta il valore predefinito */ }
+  }
+
+  /** Nome nella lingua scelta, con ripiego sull'inglese. */
+  function cardName(c) {
+    if (!c) return "";
+    return (lang === "it" && c.name_it) || c.name || "";
+  }
+
+  function cardText(c) {
+    if (!c) return "";
+    return (lang === "it" && c.descr_it) || c.descr || "";
+  }
+
+  // ------------------------------------------------- liste di divieti
+
+  const BAN_LABELS = { 0: "Vietata", 1: "Limitata", 2: "Semi-limitata" };
+  const BAN_FORMAT_LABELS = { tcg: "TCG", ocg: "OCG", goat: "Goat Format" };
+
+  /** Copie massime di una carta nel formato scelto; 3 se non e' in lista. */
+  function banLimit(id, format) {
+    if (!format) return MAX_COPIES;
+    const c = card(id);
+    const ban = c && c.ban;
+    if (!ban || ban[format] == null) return MAX_COPIES;
+    return ban[format];
+  }
+
+  function banStatus(id, format) {
+    const limit = banLimit(id, format);
+    return limit >= MAX_COPIES ? null : { limit, label: BAN_LABELS[limit] };
+  }
+
+  /** Le carte di un mazzo che il formato non ammette in quella quantita'. */
+  function banIssues(deck, format) {
+    if (!format) return [];
+    const copies = new Map();
+    for (const zone of ["main", "extra", "side"]) {
+      for (const id of deck[zone] || []) {
+        const key = canonical(id);
+        copies.set(key, (copies.get(key) || 0) + 1);
+      }
+    }
+    const issues = [];
+    for (const [id, n] of copies) {
+      const limit = banLimit(id, format);
+      if (n > limit) {
+        issues.push({
+          id, copies: n, limit,
+          name: cardName(card(id)) || String(id),
+          label: BAN_LABELS[limit] || "fuori lista",
+        });
+      }
+    }
+    return issues.sort(
+      (a, b) => a.limit - b.limit || a.name.localeCompare(b.name, "it")
+    );
+  }
+
+  /** Il formato di gioco suggerito da un mazzo dell'archivio. */
+  function formatOf(deck) {
+    const name = (deck.format || "").toLowerCase();
+    if (name.includes("goat")) return "goat";
+    if (name.includes("ocg") || name.includes("world")) return "ocg";
+    if (name.startsWith("tag force")) return null;   // videogioco: nessuna lista
+    return "tcg";
+  }
+
+  // --------------------------------------------------------- ydke e link
+
+  function toBase64(bytes) {
+    let binary = "";
+    for (const b of bytes) binary += String.fromCharCode(b);
+    return btoa(binary);
+  }
+
+  function fromBase64(text) {
+    const binary = atob(text);
+    const out = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i += 1) out[i] = binary.charCodeAt(i);
+    return out;
+  }
+
+  /** I passcode viaggiano come interi a 32 bit, byte meno significativo primo. */
+  function idsToBase64(ids) {
+    const buffer = new ArrayBuffer((ids || []).length * 4);
+    const view = new DataView(buffer);
+    (ids || []).forEach((id, i) => view.setUint32(i * 4, id, true));
+    return toBase64(new Uint8Array(buffer));
+  }
+
+  function base64ToIds(text) {
+    if (!text) return [];
+    const bytes = fromBase64(text);
+    const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    const out = [];
+    for (let i = 0; i + 4 <= bytes.byteLength; i += 4) out.push(view.getUint32(i, true));
+    return out;
+  }
+
+  /** Il formato che EDOPro, Omega e Duelingbook accettano incollato. */
+  function buildYdke(deck) {
+    return (
+      "ydke://" +
+      idsToBase64(deck.main) + "!" +
+      idsToBase64(deck.extra) + "!" +
+      idsToBase64(deck.side) + "!"
+    );
+  }
+
+  function parseYdke(text) {
+    const match = String(text).trim().match(/ydke:[/][/]([^!]*)!([^!]*)!([^!]*)!?/i);
+    if (!match) return null;
+    return {
+      main: base64ToIds(match[1]),
+      extra: base64ToIds(match[2]),
+      side: base64ToIds(match[3]),
+    };
+  }
+
+  /** Mazzo dentro un link: stessa codifica dello ydke, resa sicura per URL. */
+  function deckToHash(deck) {
+    const body = [deck.main, deck.extra, deck.side].map(idsToBase64).join("!");
+    const safe = body.replace(/[+]/g, "-").replace(/[/]/g, "_").replace(/=/g, "");
+    const name = encodeURIComponent(deck.name || "");
+    return "#mazzo=" + safe + (name ? "&nome=" + name : "");
+  }
+
+  function deckFromHash(hash) {
+    const raw = String(hash || "").replace(/^#/, "");
+    const params = new URLSearchParams(raw);
+    const body = params.get("mazzo");
+    if (!body) return null;
+    const parts = body.replace(/-/g, "+").replace(/_/g, "/").split("!");
+    try {
+      return {
+        name: params.get("nome") || "",
+        main: base64ToIds(parts[0]),
+        extra: base64ToIds(parts[1]),
+        side: base64ToIds(parts[2]),
+      };
+    } catch {
+      return null;      // link rovinato dal copia-incolla
+    }
+  }
+
+  // ------------------------------------------------- statistiche del mazzo
+
+  // Con i fattoriali si va in overflow: i logaritmi tengono i numeri piccoli.
+  const logFactCache = [0, 0];
+  function logFact(n) {
+    for (let i = logFactCache.length; i <= n; i += 1) {
+      logFactCache[i] = logFactCache[i - 1] + Math.log(i);
+    }
+    return logFactCache[n];
+  }
+
+  function logC(n, k) {
+    if (k < 0 || k > n) return -Infinity;
+    return logFact(n) - logFact(k) - logFact(n - k);
+  }
+
+  function hyper(N, K, n, x) {
+    if (x > K || n - x > N - K || x < 0 || n - x < 0) return 0;
+    return Math.exp(logC(K, x) + logC(N - K, n - x) - logC(N, n));
+  }
+
+  /**
+   * Probabilita' di pescare almeno `wanted` copie in `draws` carte.
+   * Si calcola come complemento: 1 meno la probabilita' di pescarne meno.
+   */
+  function atLeast(population, successes, draws, wanted) {
+    const need = wanted || 1;
+    if (successes <= 0 || draws <= 0 || population <= 0) return 0;
+    let miss = 0;
+    for (let x = 0; x < need; x += 1) miss += hyper(population, successes, draws, x);
+    return Math.max(0, Math.min(1, 1 - miss));
+  }
+
+  function deckStats(deck) {
+    const main = deck.main || [];
+    const entries = expand(main);
+    const groups = { Mostri: 0, Magie: 0, Trappole: 0 };
+    const levels = new Map();
+    const attributes = new Map();
+    const races = new Map();
+
+    for (const e of entries) {
+      groups[e.group] = (groups[e.group] || 0) + e.qty;
+      if (e.group !== "Mostri") continue;
+      const lv = e.linkval != null ? "LINK-" + e.linkval : e.level;
+      if (lv != null) levels.set(lv, (levels.get(lv) || 0) + e.qty);
+      if (e.attribute) attributes.set(e.attribute, (attributes.get(e.attribute) || 0) + e.qty);
+      if (e.race) races.set(e.race, (races.get(e.race) || 0) + e.qty);
+    }
+
+    const sortCount = (map) =>
+      [...map.entries()]
+        .sort((a, b) => b[1] - a[1])
+        .map(([k, v]) => ({ key: k, count: v }));
+
+    // Le carte piu' numerose sono quelle su cui conta sapere la
+    // probabilita' di aprirle.
+    const draws = 5;
+    const opening = entries
+      .slice()
+      .sort((a, b) => b.qty - a.qty || a.name.localeCompare(b.name, "it"))
+      .slice(0, 8)
+      .map((e) => ({
+        id: e.id,
+        name: e.name,
+        qty: e.qty,
+        chance: atLeast(main.length, e.qty, draws, 1),
+      }));
+
+    return {
+      size: main.length,
+      groups,
+      levels: [...levels.entries()]
+        .sort((a, b) => String(a[0]).localeCompare(String(b[0]), "it", { numeric: true }))
+        .map(([k, v]) => ({ key: k, count: v })),
+      attributes: sortCount(attributes),
+      races: sortCount(races).slice(0, 6),
+      draws,
+      opening,
+    };
+  }
+
+  // --------------------------------------------- sinergie e mazzi simili
+
+  let deckSets = null;
+
+  function allDeckSets() {
+    if (!deckSets) {
+      deckSets = decks.map((d) => {
+        const set = new Set();
+        for (const zone of ["main", "extra", "side"]) {
+          for (const id of d[zone] || []) set.add(canonical(id));
+        }
+        return set;
+      });
+    }
+    return deckSets;
+  }
+
+  /**
+   * Carte che si giocano insieme a quelle date.
+   *
+   * Contare le presenze grezze non basta: verrebbero fuori solo gli staple,
+   * che stanno in ogni mazzo. Si divide quindi per quanto una carta e'
+   * comune in generale, e resta cio' che e' davvero tipico di queste.
+   */
+  function suggestCards(ids, options) {
+    const opts = options || {};
+    const limit = opts.limit || 12;
+    const minShared = opts.minShared || 3;
+    const wanted = [...new Set((ids || []).map(canonical))].filter((id) => card(id));
+    if (!wanted.length) return [];
+
+    const sets = allDeckSets();
+    const total = decks.length;
+    const matching = [];
+    for (let i = 0; i < sets.length; i += 1) {
+      if (wanted.some((id) => sets[i].has(id))) matching.push(i);
+    }
+    if (matching.length < minShared) return [];
+
+    const have = new Set(wanted);
+    const together = new Map();
+    for (const i of matching) {
+      for (const id of sets[i]) {
+        if (!have.has(id)) together.set(id, (together.get(id) || 0) + 1);
+      }
+    }
+
+    const out = [];
+    for (const [id, n] of together) {
+      if (n < minShared) continue;
+      const overall = cardDecks(id).length;
+      if (!overall) continue;
+      const c = card(id);
+      if (!c) continue;
+      out.push({
+        id,
+        name: cardName(c),
+        decks: n,
+        share: n / matching.length,
+        lift: (n / matching.length) / (overall / total),
+      });
+    }
+    out.sort((a, b) => b.lift - a.lift || b.decks - a.decks);
+    return out.slice(0, limit);
+  }
+
+  /** Mazzi che condividono piu' carte con questo. */
+  function similarDecks(deck, options) {
+    const limit = (options || {}).limit || 6;
+    const mine = new Set();
+    for (const zone of ["main", "extra", "side"]) {
+      for (const id of deck[zone] || []) mine.add(canonical(id));
+    }
+    if (!mine.size) return [];
+
+    const sets = allDeckSets();
+    const out = [];
+    for (let i = 0; i < sets.length; i += 1) {
+      if (decks[i].deck_num === deck.deck_num) continue;
+      let shared = 0;
+      for (const id of sets[i]) if (mine.has(id)) shared += 1;
+      if (shared < 5) continue;
+      // Jaccard: premia la somiglianza, non il mazzo piu' grande.
+      out.push({
+        deck: decks[i],
+        shared,
+        score: shared / (mine.size + sets[i].size - shared),
+      });
+    }
+    out.sort((a, b) => b.score - a.score);
+    return out.slice(0, limit);
+  }
+
   function stats() {
     return {
       decks: decks.length,
@@ -686,6 +1040,12 @@ const Store = (() => {
     formats, archetypes, strategies, buildYdk, ydkFilename, downloadYdk,
     searchCards, cardFacets, cardDeckCount, decksWithCard,
     cardZone, zoneFor, validateDeck, copiesOf, parseYdk, tidyDeck,
+    setLanguage, initLanguage, cardName, cardText,
+    banLimit, banStatus, banIssues, formatOf,
+    buildYdke, parseYdke, deckToHash, deckFromHash,
+    deckStats, atLeast, suggestCards, similarDecks,
+    get language() { return lang; },
+    get banFormats() { return BAN_FORMAT_LABELS; },
     savedDecks, saveDeck, deleteSavedDeck, storageWorks,
     get limits() { return DECK_LIMITS; },
     // Riempie lo store senza passare dalla rete: lo usa
@@ -699,7 +1059,7 @@ const Store = (() => {
         Object.entries(metaData.aliases || {}).map(([a, c]) => [Number(a), c])
       );
       for (const d of decks) {
-        d._search = `${d.name || ""} ${d.author || ""} ${d.excerpt || ""}`.toLowerCase();
+        d._search = `${d.name || ""}|${d.author || ""}|${d.excerpt || ""}`.toLowerCase();
         d._format = (d.format || "").toLowerCase();
         d._archetypes = new Set(d.archetypes || []);
         d._strategies = new Set(d.strategies || []);

@@ -90,6 +90,23 @@ def fetch_all_cards():
     return data
 
 
+def fetch_card_names(language="it", timeout=180):
+    """{passcode: (nome, effetto)} nella lingua richiesta.
+
+    Stesso endpoint delle carte con il parametro `language`: i passcode
+    non cambiano, quindi si innesta sul dump inglese per id.
+    """
+    payload = _fetch_json(CARDINFO_URL + "?language=" + language, timeout=timeout)
+    data = payload.get("data") if isinstance(payload, dict) else None
+    if not data:
+        raise SourceError("Le carte in %s sono arrivate vuote" % language)
+    return {
+        int(c["id"]): (c.get("name"), c.get("desc"))
+        for c in data
+        if c.get("id") is not None
+    }
+
+
 def fetch_archetypes():
     """Elenco degli archetipi noti al sito (circa 660 voci)."""
     payload = _fetch_json(ARCHETYPES_URL, timeout=60)

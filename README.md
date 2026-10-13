@@ -35,12 +35,17 @@ autore lo dichiara, cosi' lo riconosce l'app guardando le carte.
 2. **Clicca un mazzo** per vederlo intero prima di scaricarlo: main deck,
    extra e side, con le immagini di tutte le carte e il conteggio di
    mostri, magie e trappole.
-3. **Clicca una carta** per vederne la scheda: immagine grande, effetto
+3. **Carte in italiano.** Il tasto **IT/EN** in alto cambia la lingua dei
+   nomi e degli effetti. La ricerca funziona comunque in entrambe le
+   lingue: cerca *Mago Nero* o *Dark Magician*, trova la stessa carta.
+4. **Clicca una carta** per vederne la scheda: immagine grande, effetto
    completo, attributo, tipo, livello (o rango, o valore Link con le
    frecce), ATK e DEF, archetipo e passcode. Da li' il tasto **Mazzi con
    questa carta** ti mostra tutti i mazzi che la usano.
-4. **Scarica .ydk** per salvare il file. _Anteprima .ydk_ ti mostra prima
-   cosa contiene.
+5. **Scarica .ydk** per salvare il file, oppure **Copia link** per
+   mandarlo a qualcuno: si apre gia' pronto. **Copia ydke** da' il codice
+   da incollare in EDOPro, Omega o Duelingbook, e **Stampa** produce la
+   decklist su carta per i tornei dal vivo.
 
 ### La sezione Carte
 
@@ -72,6 +77,18 @@ In alto vedi sempre quante carte hai in ogni zona e cosa non va: massimo
 tre copie della stessa carta in tutto il mazzo, Main fra 40 e 60, Extra e
 Side fino a 15. I conteggi diventano verdi quando il mazzo e' a posto.
 
+**Scegli il formato** (TCG, OCG o Goat) e l'app controlla anche la lista
+di divieti: ti dice quali carte sono vietate o limitate, e non te ne fa
+aggiungere piu' del consentito. Cambiare formato cambia il verdetto: un
+mazzo Goat perfettamente legale risulta pieno di carte vietate se lo
+misuri con la lista TCG di oggi, ed e' giusto cosi'.
+
+**Annulla** recupera l'ultima modifica, fino a cinquanta passi indietro.
+
+Sotto il pannello di ricerca compaiono i **suggerimenti**: carte che negli
+altri mazzi si giocano spesso insieme alle tue. Non sono gli staple che
+stanno ovunque, ma quelle davvero tipiche di quello che stai costruendo.
+
 Quando hai finito, **Scarica .ydk** oppure **Salva** per tenerlo in
 **I miei mazzi**.
 
@@ -89,6 +106,16 @@ e da li' puoi continuare a estrarne altri.
 
 Le scelte nella stessa categoria valgono come "oppure", fra categorie
 diverse come "e". Per esempio: _Goat **oppure** Edison, **ma** burn_.
+
+### Cosa trovi aprendo un mazzo
+
+Oltre alle carte, in fondo alla scheda ci sono:
+
+- **se il mazzo e' valido** nel formato a cui appartiene, con l'elenco
+  delle carte fuori lista;
+- **le statistiche**: distribuzione di livelli e attributi, e la
+  probabilita' di aprire con ciascuna carta nelle prime cinque;
+- **i mazzi simili**, cioe' quelli che condividono piu' carte.
 
 ## Cosa farci con il file .ydk
 

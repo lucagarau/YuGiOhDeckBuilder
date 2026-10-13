@@ -23,6 +23,7 @@
   </nav>
 
   <div class="topbar-actions">
+    <button id="btnLang" class="btn btn-ghost" title="Lingua dei nomi delle carte">IT</button>
     <button id="btnRandomMode" class="btn btn-ghost" title="Modalita' casuale">&#127922; Random</button>
     <button id="btnUpdate" class="btn btn-primary">Aggiorna DB</button>
     <button id="btnUpdateOpts" class="btn btn-ghost" title="Opzioni di aggiornamento">&#9881;</button>
@@ -164,6 +165,9 @@
     <footer class="modal-foot">
       <button id="btnYdk" class="btn btn-primary">Scarica .ydk</button>
       <button id="btnPreview" class="btn btn-ghost">Anteprima .ydk</button>
+      <button id="btnYdke" class="btn btn-ghost">Copia ydke</button>
+      <button id="btnLink" class="btn btn-ghost">Copia link</button>
+      <button id="btnPrint" class="btn btn-ghost">Stampa</button>
       <button id="btnEditDeck" class="btn btn-ghost">Modifica mazzo</button>
       <button id="btnReroll" class="btn btn-ghost hidden">&#127922; Estrai un altro</button>
       <a id="linkSource" class="btn btn-ghost" target="_blank" rel="noopener">Apri la fonte</a>
@@ -180,6 +184,23 @@
   <button id="edSave" class="btn btn-primary">Salva</button>
   <button id="edDownload" class="btn btn-ghost">Scarica .ydk</button>
   <button id="edMine" class="btn btn-ghost">I miei mazzi</button>
+</section>
+
+<section class="panel editor-bar second">
+  <label class="inline">Formato
+    <select id="edFormat">
+      <option value="">Nessuna lista</option>
+      <option value="tcg" selected>TCG</option>
+      <option value="ocg">OCG</option>
+      <option value="goat">Goat Format</option>
+    </select>
+  </label>
+  <button id="edUndo" class="btn btn-ghost" disabled>Annulla</button>
+  <span class="spacer"></span>
+  <button id="edYdke" class="btn btn-ghost">Copia ydke</button>
+  <button id="edPasteYdke" class="btn btn-ghost">Incolla ydke</button>
+  <button id="edLink" class="btn btn-ghost">Copia link</button>
+  <button id="edPrint" class="btn btn-ghost">Stampa</button>
 </section>
 
 <section id="edMinePanel" class="panel hidden">
@@ -222,6 +243,14 @@
     </div>
     <p class="hint">Clicca per aggiungere. Il tasto <strong>S</strong> manda al Side.</p>
     <div id="pickerGrid" class="picker-grid"></div>
+    <div id="edSuggest" class="suggest hidden">
+      <div class="suggest-head">
+        <strong>Spesso giocate insieme</strong>
+        <button id="edSuggestRefresh" class="btn btn-ghost">Aggiorna</button>
+      </div>
+      <div id="edSuggestList" class="suggest-list"></div>
+    </div>
+
     <div class="picker-foot">
       <button id="pPrev" class="btn btn-ghost" disabled>&#8592;</button>
       <span id="pPageLabel" class="muted">1</span>

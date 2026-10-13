@@ -156,5 +156,103 @@ check("il conteggio dei mazzi con una carta e' esatto",
 const filtered = Store.search({ cardId: DARK_MAGICIAN, perPage: 96 });
 check("il filtro per carta trova gli stessi mazzi", filtered.total === expected);
 
+// ---------------------------------------------------- liste di divieti
+
+const POT_OF_GREED = 55144522;
+check("Pot of Greed e' vietata nel TCG", Store.banLimit(POT_OF_GREED, "tcg") === 0);
+check("ma e' limitata nel Goat", Store.banLimit(POT_OF_GREED, "goat") === 1,
+  String(Store.banLimit(POT_OF_GREED, "goat")));
+check("senza formato vale il limite generale", Store.banLimit(POT_OF_GREED, null) === 3);
+check("una carta fuori lista resta a tre copie", Store.banLimit(DARK_MAGICIAN, "tcg") === 3);
+
+const withBanned = { main: [POT_OF_GREED, POT_OF_GREED], extra: [], side: [] };
+check("una carta vietata e' un errore nel TCG",
+  Store.validateDeck(withBanned, "tcg").errors.some((e) => e.indexOf("Vietata") >= 0));
+check("due copie sono troppe anche nel Goat, dove e' limitata",
+  Store.banIssues(withBanned, "goat")[0].limit === 1);
+check("una copia sola invece passa nel Goat",
+  Store.banIssues({ main: [POT_OF_GREED], extra: [], side: [] }, "goat").length === 0);
+check("senza formato non si controlla la lista",
+  !Store.validateDeck(withBanned).errors.some((e) => e.indexOf("Vietata") >= 0));
+check("banIssues elenca il problema", Store.banIssues(withBanned, "tcg").length === 1);
+check("un mazzo Goat sceglie la lista Goat",
+  Store.formatOf({ format: "Goat Format Decks" }) === "goat");
+check("un mazzo Tag Force non ha lista", Store.formatOf({ format: "Tag Force 3" }) === null);
+
+// --------------------------------------------------------------- lingua
+
+Store.setLanguage("it");
+check("i nomi sono in italiano",
+  Store.cardName(Store.card(DARK_MAGICIAN)) === "Mago Nero",
+  Store.cardName(Store.card(DARK_MAGICIAN)));
+Store.setLanguage("en");
+check("in inglese torna l'originale",
+  Store.cardName(Store.card(DARK_MAGICIAN)) === "Dark Magician");
+Store.setLanguage("it");
+check("la ricerca trova il nome inglese anche in italiano",
+  Store.searchCards({ q: "Dark Magician", perPage: 96 }).total > 0);
+check("e trova anche il nome italiano",
+  Store.searchCards({ q: "Mago Nero", perPage: 96 }).total > 0);
+
+// ----------------------------------------------------------- ydke e link
+
+const ydke = Store.buildYdke(sample);
+check("lo ydke comincia come deve", ydke.indexOf("ydke://") === 0);
+const fromYdke = Store.parseYdke(ydke);
+check("lo ydke rifatto ha le stesse carte",
+  JSON.stringify([fromYdke.main, fromYdke.extra, fromYdke.side]) ===
+    JSON.stringify([sample.main, sample.extra, sample.side]));
+check("uno ydke malformato non esplode", Store.parseYdke("non uno ydke") === null);
+
+const hash = Store.deckToHash({
+  name: "Prova & test", main: sample.main, extra: sample.extra, side: sample.side,
+});
+const hashValue = hash.replace(/^#mazzo=/, "").split("&")[0];
+check("il link non contiene caratteri da sfuggire", !/[+/=]/.test(hashValue), hashValue.slice(0, 40));
+const fromHash = Store.deckFromHash(hash);
+check("il mazzo dal link e' identico",
+  JSON.stringify([fromHash.main, fromHash.extra, fromHash.side]) ===
+    JSON.stringify([sample.main, sample.extra, sample.side]));
+check("il link conserva il nome", fromHash.name === "Prova & test", fromHash.name);
+check("un link senza mazzo torna nullo", Store.deckFromHash("#altro=1") === null);
+
+// -------------------------------------------------------- statistiche
+
+const stats = Store.deckStats(sample);
+check("le statistiche contano tutte le carte del main",
+  stats.groups.Mostri + stats.groups.Magie + stats.groups.Trappole === sample.main.length,
+  stats.groups.Mostri + "+" + stats.groups.Magie + "+" + stats.groups.Trappole +
+    " invece di " + sample.main.length);
+check("le probabilita' stanno fra 0 e 1",
+  stats.opening.every((o) => o.chance >= 0 && o.chance <= 1));
+
+// Tre copie su quaranta carte, cinque pescate: valore noto, 33,76%.
+const known = Store.atLeast(40, 3, 5, 1);
+check("il calcolo ipergeometrico e' corretto",
+  Math.abs(known - 0.337579) < 0.0005, known.toFixed(6));
+check("una copia sola si apre di rado",
+  Store.atLeast(40, 1, 5, 1) > 0.12 && Store.atLeast(40, 1, 5, 1) < 0.13);
+check("un mazzo di sole copie uguali da' certezza", Store.atLeast(40, 40, 5, 1) === 1);
+
+// --------------------------------------------- sinergie e mazzi simili
+
+const BLACK_LUSTER = 72989439;
+const suggestions = Store.suggestCards([BLACK_LUSTER]);
+check("i suggerimenti arrivano", suggestions.length > 0);
+check("non ripetono la carta di partenza",
+  !suggestions.some((x) => x.id === BLACK_LUSTER));
+check("non sono solo staple",
+  !suggestions.slice(0, 3).some((x) => /Heavy Storm|Mystical Space Typhoon|Ciclone/.test(x.name)),
+  suggestions.slice(0, 3).map((x) => x.name).join(", "));
+check("una carta inesistente non da' suggerimenti",
+  Store.suggestCards([999999999]).length === 0);
+
+const similar = Store.similarDecks(sample);
+check("i mazzi simili arrivano", similar.length > 0);
+check("non propone il mazzo stesso",
+  !similar.some((x) => x.deck.deck_num === sample.deck_num));
+check("sono ordinati per somiglianza",
+  similar.every((x, i) => i === 0 || similar[i - 1].score >= x.score));
+
 console.log(`\n${passed} test superati, ${failed} falliti.`);
 process.exit(failed ? 1 : 0);

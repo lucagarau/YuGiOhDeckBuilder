@@ -128,6 +128,22 @@ def _ingest_tagforce(arch_map, name_index, tagger):
     return len(seen)
 
 
+def _fetch_italian():
+    """I nomi italiani sono un secondo giro sullo stesso endpoint.
+
+    Se non arrivano, l'archivio resta usabile in inglese: non vale la
+    pena far fallire tutto l'aggiornamento per questo.
+    """
+    try:
+        _log("Scarico nomi ed effetti in italiano...")
+        names = sources.fetch_card_names("it")
+        n = db.update_card_names(names)
+        db.set_meta("last_italian_update", db.now_iso())
+        _log("Tradotte %d carte in italiano." % n)
+    except sources.SourceError as exc:
+        _log("Italiano non disponibile (%s): resta tutto in inglese." % exc)
+
+
 def _fetch_missing_sides(limit):
     """Il side deck sta solo nella pagina HTML del mazzo, una per mazzo.
 
@@ -174,6 +190,7 @@ def _run(pages_per_format, formats, with_cards, with_tagforce=True,
             db.set_meta("card_count", saved)
             _set(cards_saved=saved, done=1)
             _log("Salvate %d carte." % saved)
+            _fetch_italian()
         elif db.stats()["cards"] == 0:
             _log("Nessuna carta in archivio: scarico comunque il database carte.")
             cards = sources.fetch_all_cards()
@@ -181,6 +198,7 @@ def _run(pages_per_format, formats, with_cards, with_tagforce=True,
             db.set_meta("last_card_update", db.now_iso())
             _set(cards_saved=saved)
             _log("Salvate %d carte." % saved)
+            _fetch_italian()
 
         arch_map = db.card_archetype_map()
 
