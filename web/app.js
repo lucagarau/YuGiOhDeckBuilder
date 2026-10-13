@@ -27,6 +27,7 @@ const state = {
   pickerPage: 1,
   movedNote: "",
   history: [],
+  archetype: null,
 };
 
 async function api(path, options) {
@@ -299,10 +300,15 @@ function showDeck(deck) {
   if (deck.submit_date) bits.push(deck.submit_date);
   $("#deckMeta").textContent = bits.filter(Boolean).join(" · ");
 
+  // Ogni fonte ha la sua pagina: il link deve portare a quella giusta.
+  const SOURCE_LABELS = {
+    tagforce: "Apri sul wiki",
+    masterduel: "Apri su Master Duel Meta",
+  };
   const link = $("#linkSource");
-  if (deck.source === "tagforce" && deck.source_url) {
+  if (deck.source_url && SOURCE_LABELS[deck.source]) {
     link.href = deck.source_url;
-    link.textContent = "Apri sul wiki";
+    link.textContent = SOURCE_LABELS[deck.source];
   } else {
     link.href = "https://ygoprodeck.com/deck/" + encodeURIComponent(deck.pretty_url || "");
     link.textContent = "Apri su YGOPRODeck";
@@ -811,10 +817,149 @@ function renderSavedDecks() {
   );
 }
 
+
+// ----------------------------------------------------- vista archetipi
+
+function renderArchetypeList() {
+  const q = $("#aQuery").value.trim().toLowerCase();
+  const all = Store.archetypeList().filter(
+    (a) => !q || a.name.toLowerCase().includes(q)
+  );
+
+  $("#archList").classList.remove("hidden");
+  $("#archDetail").classList.add("hidden");
+  $("#aBack").classList.add("hidden");
+
+  if (!all.length) {
+    $("#archList").innerHTML = '<p class="empty">Nessun archetipo trovato.</p>';
+    return;
+  }
+  $("#archList").innerHTML = all
+    .map(
+      (a) => `
+      <button class="arch-item" data-name="${escapeHtml(a.name)}">
+        <strong>${escapeHtml(a.name)}</strong>
+        <span class="muted">${a.count} mazz${a.count > 1 ? "i" : "o"}</span>
+      </button>`
+    )
+    .join("");
+  $("#archList")
+    .querySelectorAll(".arch-item")
+    .forEach((b) =>
+      b.addEventListener("click", () => openArchetype(b.dataset.name))
+    );
+}
+
+function openArchetype(name) {
+  const p = Store.archetypeProfile(name);
+  if (!p) return;
+  state.archetype = name;
+  showView("archetipi");
+
+  $("#archList").classList.add("hidden");
+  $("#aBack").classList.remove("hidden");
+  const box = $("#archDetail");
+  box.classList.remove("hidden");
+
+  const chips = (items, label) =>
+    items.length
+      ? `<div class="arch-facet"><h4>${label}</h4><div class="tags">` +
+        items
+          .map(
+            (x) =>
+              `<span class="tag">${escapeHtml(x.label || x.key)} <em>${x.count}</em></span>`
+          )
+          .join("") +
+        `</div></div>`
+      : "";
+
+  const partners = p.partners.length
+    ? `<div class="arch-facet"><h4>Spesso insieme a</h4><div class="tags">` +
+      p.partners
+        .map(
+          (x) =>
+            `<button class="tag link" data-arch="${escapeHtml(x.key)}">${escapeHtml(x.key)} <em>${x.count}</em></button>`
+        )
+        .join("") +
+      `</div></div>`
+    : "";
+
+  const cards = p.cards
+    .map(
+      (c) => `
+      <div class="card-tile" data-card="${c.id}" role="button" tabindex="0"
+           title="${escapeHtml(c.name)}">
+        <img loading="lazy" src="${imgUrl(c.id)}" alt="${escapeHtml(c.name)}"
+             data-card-id="${c.id}" onerror="Store.imgFallback(this)">
+        ${c.inArchetype ? `<span class="qty">${c.inArchetype}</span>` : ""}
+        <div class="cname">${escapeHtml(c.name)}</div>
+      </div>`
+    )
+    .join("");
+
+  const decks = p.topDecks
+    .map(
+      (d) => `
+      <button class="similar-item" data-num="${d.deck_num}">
+        <strong>${escapeHtml(d.name)}</strong>
+        <span class="muted">${escapeHtml(d.format || "")}${d.author ? " - " + escapeHtml(d.author) : ""}</span>
+      </button>`
+    )
+    .join("");
+
+  box.innerHTML = `
+    <header class="arch-head">
+      <h2>${escapeHtml(p.name)}</h2>
+      <p class="muted">${p.cardCount} carte dell'archetipo - giocato in ${p.deckCount} mazzi</p>
+      <button id="aSeeDecks" class="btn btn-primary">Vedi tutti i mazzi</button>
+    </header>
+    <div class="arch-facets">
+      ${chips(p.formats, "Dove si gioca")}
+      ${chips(p.strategies, "Come funziona")}
+      ${partners}
+    </div>
+    ${cards ? `<section class="zone"><div class="zone-head"><h3>Le sue carte</h3>
+       <span class="muted">il numero e' in quanti mazzi dell'archetipo compare</span></div>
+       <div class="card-grid">${cards}</div></section>` : ""}
+    ${decks ? `<section class="zone"><div class="zone-head"><h3>Mazzi</h3></div>
+       <div class="similar-list">${decks}</div></section>` : ""}`;
+
+  box.querySelectorAll("[data-card]").forEach((el) =>
+    el.addEventListener("click", () => openCard(cardEntry(Number(el.dataset.card))))
+  );
+  box.querySelectorAll(".similar-item").forEach((b) =>
+    b.addEventListener("click", () => openDeck(Number(b.dataset.num)))
+  );
+  box.querySelectorAll("[data-arch]").forEach((b) =>
+    b.addEventListener("click", () => openArchetype(b.dataset.arch))
+  );
+  const seeAll = $("#aSeeDecks");
+  if (seeAll) {
+    seeAll.addEventListener("click", () => {
+      state.cardFilter = null;
+      showView("decks");
+      $("#fQuery").value = "";
+      $("#fFormat").value = "";
+      $("#fStrategy").value = "";
+      $("#fArchetype").value = p.name;
+      state.page = 1;
+      search();
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    });
+  }
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
 // --------------------------------------------------------- vista carte
 
-const VIEWS = { decks: "#viewDecks", cards: "#viewCards", editor: "#viewEditor" };
-const TABS = { decks: "#tabDecks", cards: "#tabCards", editor: "#tabEditor" };
+const VIEWS = {
+  decks: "#viewDecks", cards: "#viewCards",
+  archetipi: "#viewArch", editor: "#viewEditor",
+};
+const TABS = {
+  decks: "#tabDecks", cards: "#tabCards",
+  archetipi: "#tabArch", editor: "#tabEditor",
+};
 
 function showView(name) {
   for (const [key, sel] of Object.entries(VIEWS)) {
@@ -836,6 +981,7 @@ function showView(name) {
     }
     searchCards();
   }
+  if (name === "archetipi" && !state.archetype) renderArchetypeList();
   if (name === "editor") {
     editorInit();
     if (!state.editing) editorLoad(EMPTY_DECK());
@@ -987,7 +1133,7 @@ function statRows(c) {
     rows.push([kind.includes("trap") ? "Trappola" : "Magia", c.race]);
   }
 
-  if (c.archetype) rows.push(["Archetipo", c.archetype]);
+  if (c.archetype) rows.push(["Archetipo", c.archetype, "archetipo"]);
   rows.push(["Passcode", c.id]);
   return rows;
 }
@@ -999,9 +1145,11 @@ function openCard(entry) {
     : "";
 
   const rows = statRows(entry)
-    .map(
-      ([label, value]) =>
-        `<div class="stat"><dt>${escapeHtml(label)}</dt><dd>${escapeHtml(value)}</dd></div>`
+    .map(([label, value, action]) =>
+      action === "archetipo"
+        ? `<div class="stat"><dt>${escapeHtml(label)}</dt><dd>` +
+            `<button class="link-like" data-arch="${escapeHtml(value)}">${escapeHtml(value)}</button></dd></div>`
+        : `<div class="stat"><dt>${escapeHtml(label)}</dt><dd>${escapeHtml(value)}</dd></div>`
     )
     .join("");
 
@@ -1031,6 +1179,14 @@ function openCard(entry) {
   btn.addEventListener("click", () =>
     decksWithCurrentCard(Number(btn.dataset.id), btn.dataset.name)
   );
+  const archBtn = $("#cardBody [data-arch]");
+  if (archBtn) {
+    archBtn.addEventListener("click", () => {
+      closeCard();
+      closeDeck();
+      openArchetype(archBtn.dataset.arch);
+    });
+  }
   $("#cardOverlay").classList.remove("hidden");
 }
 
@@ -1283,7 +1439,24 @@ function init() {
 
   $("#tabDecks").addEventListener("click", () => showView("decks"));
   $("#tabCards").addEventListener("click", () => showView("cards"));
+  $("#tabArch").addEventListener("click", () => {
+    state.archetype = null;
+    showView("archetipi");
+    renderArchetypeList();
+  });
   $("#tabEditor").addEventListener("click", () => showView("editor"));
+  $("#aBack").addEventListener("click", () => {
+    state.archetype = null;
+    renderArchetypeList();
+  });
+  let archTimer = null;
+  $("#aQuery").addEventListener("input", () => {
+    clearTimeout(archTimer);
+    archTimer = setTimeout(() => {
+      state.archetype = null;
+      renderArchetypeList();
+    }, 200);
+  });
 
   // --- editor ---
   $("#edName").addEventListener("input", (ev) => {

@@ -606,3 +606,43 @@ input:focus, select:focus { outline: 2px solid var(--blue); outline-offset: -1px
 .editor-bar.second { border-top: none; padding-top: 0; }
 .editor-bar .inline { display: flex; align-items: center; gap: 8px; font-size: 14px; }
 .editor-bar .spacer { flex: 1 1 auto; }
+
+/* ---------------------------------------------------------- archetipi */
+
+.arch-list {
+  display: grid; gap: 8px;
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+}
+.arch-item {
+  display: flex; flex-direction: column; gap: 3px; text-align: left;
+  cursor: pointer; font: inherit;
+  background: var(--bg-card); color: var(--text);
+  border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px;
+  transition: border-color .12s, transform .12s;
+}
+.arch-item:hover { border-color: var(--accent); transform: translateY(-2px); }
+.arch-item .muted { font-size: 12px; }
+
+.arch-head { margin-bottom: 18px; }
+.arch-head h2 { font-size: 22px; }
+.arch-head .muted { margin: 4px 0 12px; }
+
+.arch-facets {
+  display: grid; gap: 18px; margin-bottom: 22px;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+}
+.arch-facet h4 {
+  font-size: 12px; color: var(--muted); margin: 0 0 8px;
+  text-transform: uppercase; letter-spacing: .4px; font-weight: 600;
+}
+.arch-facet .tag em { font-style: normal; opacity: .65; margin-left: 3px; }
+.tag.link { cursor: pointer; font: inherit; font-size: 11px; }
+.tag.link:hover { border-color: var(--accent); color: var(--text); }
+
+.link-like {
+  background: none; border: none; padding: 0; cursor: pointer; font: inherit;
+  color: var(--blue); text-decoration: underline; text-underline-offset: 2px;
+}
+.link-like:hover { color: #9cc8ef; }
+
+#aQuery { flex: 1 1 280px; }

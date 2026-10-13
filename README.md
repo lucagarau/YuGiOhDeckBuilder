@@ -10,8 +10,11 @@ non serve installare niente.
 
 ## Cosa trovi dentro
 
-Oltre 4.500 mazzi, raccolti da due mondi diversi:
+Oltre 9.000 mazzi, raccolti da tre mondi diversi:
 
+- **Il meta di Master Duel**, con il rango raggiunto o il torneo vinto:
+  i mazzi che hanno davvero fatto risultato, aggiornati di giorno in
+  giorno.
 - **Mazzi da torneo e da community**, nei formati moderni e in quelli
   retro come Goat, Edison e Domain.
 - **I mazzi dei personaggi di _Tag Force_**, tutti e sette i giochi per
@@ -22,7 +25,7 @@ Puoi cercarli per nome o autore e filtrarli per:
 
 | Filtro | Esempi |
 | --- | --- |
-| **Formato** | Goat, Edison, Master Duel, Tag Force 1-6, Tag Force Special |
+| **Formato** | Master Duel Meta, Goat, Edison, Tag Force 1-6, Tag Force Special |
 | **Archetipo** | Blue-Eyes, Elemental HERO, Zoodiac, Monarch |
 | **Funzionamento** | Burn, Stun, Chaos, Monarca, Exodia, Mill, OTK/FTK, Control, Combo, Aggro |
 
@@ -46,6 +49,13 @@ autore lo dichiara, cosi' lo riconosce l'app guardando le carte.
    mandarlo a qualcuno: si apre gia' pronto. **Copia ydke** da' il codice
    da incollare in EDOPro, Omega o Duelingbook, e **Stampa** produce la
    decklist su carta per i tornei dal vivo.
+
+### La sezione Archetipi
+
+Ogni archetipo ha la sua pagina: tutte le sue carte con quanto vengono
+giocate, in quali formati compare, come funziona di solito e **con quali
+altri archetipi viene mescolato piu' spesso** - per Tri-Brigade escono
+Zoodiac e Lyrilusc, che e' esattamente come si gioca.
 
 ### La sezione Carte
 
@@ -186,6 +196,8 @@ I dati non sono miei: l'app li raccoglie, li organizza e li converte in
 - **[Yu-Gi-Oh! Wiki](https://yugioh.fandom.com)** su Fandom — i mazzi dei
   personaggi di _Tag Force_, con licenza
   [CC BY-SA 3.0](https://creativecommons.org/licenses/by-sa/3.0/).
+- **[Master Duel Meta](https://www.masterduelmeta.com)** — i mazzi del
+  meta di Master Duel con i relativi piazzamenti.
 
 Yu-Gi-Oh! e' un marchio di Konami Digital Entertainment. Questo e' un
 progetto amatoriale senza scopo di lucro, non affiliato ne' approvato da

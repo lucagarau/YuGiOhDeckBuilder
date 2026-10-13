@@ -19,6 +19,7 @@
   <nav class="tabs" role="tablist">
     <button id="tabDecks" class="tab active" role="tab" aria-selected="true">Mazzi</button>
     <button id="tabCards" class="tab" role="tab" aria-selected="false">Carte</button>
+    <button id="tabArch" class="tab" role="tab" aria-selected="false">Archetipi</button>
     <button id="tabEditor" class="tab" role="tab" aria-selected="false">Crea mazzo</button>
   </nav>
 
@@ -173,6 +174,17 @@
       <a id="linkSource" class="btn btn-ghost" target="_blank" rel="noopener">Apri la fonte</a>
     </footer>
   </div>
+</div>
+
+<div id="viewArch" class="hidden">
+<section class="filters">
+  <input id="aQuery" type="search" placeholder="Cerca un archetipo...">
+  <button id="aBack" class="btn btn-ghost hidden">&#8592; Tutti gli archetipi</button>
+</section>
+<section class="results">
+  <div id="archList" class="arch-list"></div>
+  <div id="archDetail" class="hidden"></div>
+</section>
 </div>
 
 <div id="viewEditor" class="hidden">

@@ -113,6 +113,10 @@ JSON, ne' il sito.
   "Rango" per gli Xyz, "LINK-n" piu' le frecce per i Link, nessuna difesa
   per i Link, sottotipo (Normal, Quick-Play, Continuous) per magie e
   trappole.
+- **Pagine degli archetipi.** Il profilo incrocia carte, mazzi, formati,
+  funzionamento e archetipi compagni. Costa fra i 6 e gli 80 millisecondi
+  anche sugli archetipi piu' grandi, quindi si calcola a ogni apertura
+  senza bisogno di memorizzarlo.
 - **Sezione carte e "mazzi con questa carta".** Servono un indice
   `passcode -> mazzi` e una copia delle carte con il testo in minuscolo
   per la ricerca sull'effetto. Sono entrambi pesanti e inutili finche'
@@ -131,6 +135,18 @@ JSON, ne' il sito.
   mostri dell'Extra nel Main, e dice quante carte ha spostato. Il limite
   delle tre copie vale su tutto il mazzo e conta i passcode canonici,
   quindi tre artwork diversi della stessa carta contano tre.
+- **Master Duel Meta.** Le liste indicano le carte con un identificativo
+  interno del sito, non col passcode: serve prima la tabella delle carte
+  per tradurli. Il campo `konamiID` e' il passcode vero, verificato su
+  2.975 carte con il 99,9% di corrispondenza e nessun codice sconosciuto.
+  Senza `sort=-created` l'API parte dai mazzi del 2022: per una fonte di
+  meta servono i piu' recenti. Il campo `author` a volte e' un oggetto
+  utente, a volte direttamente la stringa del nome.
+- **Un formato senza lista e' meglio di una lista sbagliata.** Master Duel
+  e Tag Force hanno regole proprie che la fonte non pubblica, quindi
+  `formatOf` restituisce `null` e l'app non da' alcun verdetto. Applicare
+  la lista TCG a un mazzo di Master Duel sarebbe esattamente l'errore che
+  il controllo di legalita' doveva eliminare.
 - **Liste di divieti.** `banlist_info` arriva dallo stesso endpoint delle
   carte e distingue TCG, OCG e Goat. In archivio restano le parole
   (`Forbidden`, `Limited`...), ma l'export le converte nel numero massimo

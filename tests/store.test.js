@@ -178,6 +178,10 @@ check("banIssues elenca il problema", Store.banIssues(withBanned, "tcg").length 
 check("un mazzo Goat sceglie la lista Goat",
   Store.formatOf({ format: "Goat Format Decks" }) === "goat");
 check("un mazzo Tag Force non ha lista", Store.formatOf({ format: "Tag Force 3" }) === null);
+// Master Duel ha una lista propria che la fonte non pubblica: applicargli
+// quella del TCG darebbe un verdetto sbagliato.
+check("un mazzo Master Duel non ha lista",
+  Store.formatOf({ format: "Master Duel Meta" }) === null);
 
 // --------------------------------------------------------------- lingua
 
@@ -253,6 +257,44 @@ check("non propone il mazzo stesso",
   !similar.some((x) => x.deck.deck_num === sample.deck_num));
 check("sono ordinati per somiglianza",
   similar.every((x, i) => i === 0 || similar[i - 1].score >= x.score));
+
+// -------------------------------------------------------- archetipi
+
+const profile = Store.archetypeProfile("Blue-Eyes");
+check("il profilo di un archetipo esiste", !!profile);
+check("conta le sue carte", profile.cardCount > 10);
+check("conta i suoi mazzi", profile.deckCount > 0);
+check("sa dove si gioca", profile.formats.length > 0);
+check("elenca le carte dalla piu' giocata",
+  profile.cards.every((c, i) => i === 0 || profile.cards[i - 1].inArchetype >= c.inArchetype));
+check("non si accosta a se stesso",
+  !profile.partners.some((p) => p.key === "Blue-Eyes"));
+check("un archetipo inventato non ha profilo",
+  Store.archetypeProfile("Archetipo Inesistente") === null);
+check("senza nome non ha profilo", Store.archetypeProfile("") === null);
+check("l'elenco degli archetipi e' ordinato per numero di mazzi",
+  Store.archetypeList().every((a, i) => i === 0 || Store.archetypeList()[i - 1].count >= a.count));
+
+// ------------------------------------------------ mazzi da Master Duel
+
+const mdDecks = decks.filter((d) => d.source === "masterduel");
+if (mdDecks.length) {
+  check("i mazzi Master Duel hanno un formato proprio",
+    mdDecks.every((d) => d.format === "Master Duel Meta"));
+  check("i loro numeri non collidono con le altre fonti",
+    mdDecks.every((d) => d.deck_num >= 2000000000));
+  // Qualche carta del sito non ha un passcode (una su 4.800 mazzi alla
+  // scrittura di questo test): e' una lacuna della fonte, non del codice.
+  // Si verifica che resti un'eccezione, non che non esista.
+  const conLacune = mdDecks.filter((d) => (d.unresolved || []).length).length;
+  check("le carte non riconosciute restano un'eccezione",
+    conLacune / mdDecks.length < 0.005,
+    `${conLacune} mazzi su ${mdDecks.length}`);
+  check("hanno un main deck giocabile",
+    mdDecks.every((d) => d.main.length >= 20));
+  const risolte = mdDecks[0].main.every((id) => !!Store.card(id));
+  check("i passcode di Master Duel esistono nel database carte", risolte);
+}
 
 console.log(`\n${passed} test superati, ${failed} falliti.`);
 process.exit(failed ? 1 : 0);

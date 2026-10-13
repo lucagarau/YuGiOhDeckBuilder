@@ -4,7 +4,7 @@ Ordine ragionato: prima le cose che oggi danno informazioni **sbagliate**,
 poi quelle che allargano a chi usa l'app, infine quelle che la rendono uno
 strumento invece di un archivio.
 
-Le versioni **1.0 - 1.3 sono completate**: quel che resta e' in fondo
+Le versioni **1.0 - 1.4 sono completate** (tranne l'app offline): quel che resta e' in fondo
 alla sezione "Fatto". Il piano riparte dalla 1.4.
 
 La dimensione (S / M / L) e' lo sforzo relativo, non una stima di ore.
@@ -20,19 +20,12 @@ La dimensione (S / M / L) e' lo sforzo relativo, non una stima di ore.
 
 ---
 
-## 1.4 — Allargare
+## 1.4 — Allargare (in parte)
 
 - [ ] **App installabile offline** (M). Service worker e manifest: il sito
       statico diventa un'app sul telefono che funziona senza rete. Si
       incastra bene con l'architettura attuale, che e' gia' tutta file
-      statici piu' JSON.
-- [ ] **Mazzi da Master Duel Meta** (M). API aperta, e curiosamente
-      raggiungibile anche quando la rete blocca gli altri domini Yu-Gi-Oh.
-      Porterebbe il meta recente di Master Duel con i piazzamenti, l'unico
-      pezzo di competitivo attuale che manca.
-- [ ] **Pagina per archetipo** (M). Tutte le sue carte, i suoi mazzi, le
-      sue varianti. I dati ci sono gia' tutti.
-
+      statici piu' JSON. *Rimandata per scelta.*
 ## Piu' avanti
 
 - [ ] Confronto fra due mazzi (M).
@@ -62,6 +55,13 @@ La dimensione (S / M / L) e' lo sforzo relativo, non una stima di ore.
 ---
 
 ## Fatto
+
+**Versione 1.4** (tranne l'app offline, rimandata):
+
+- [x] Mazzi dal meta di Master Duel, con rango e tornei: 4.800 mazzi dal
+      2022 a oggi, zero carte non risolte salvo una lacuna della fonte.
+- [x] Pagina per archetipo: carte, mazzi, formati, funzionamento e
+      archetipi compagni.
 
 **Versioni 1.0 - 1.3** (tutte completate):
 

@@ -6,7 +6,7 @@ l'interfaccia interroga stato() per la barra di avanzamento.
 import threading
 import time
 
-from . import db, export, sources, strategies, tagforce
+from . import db, export, masterduel, sources, strategies, tagforce
 
 _lock = threading.Lock()
 _state = {
@@ -48,7 +48,8 @@ def is_running():
 
 
 def start(pages_per_format=5, formats=None, with_cards=True,
-          with_tagforce=True, side_limit=300):
+          with_tagforce=True, side_limit=300,
+          masterduel_pages=masterduel.MAX_PAGES):
     """Avvia l'aggiornamento. Restituisce False se ne sta gia' girando uno."""
     with _lock:
         if _state["running"]:
@@ -69,7 +70,7 @@ def start(pages_per_format=5, formats=None, with_cards=True,
     thread = threading.Thread(
         target=_run,
         args=(int(pages_per_format), formats, bool(with_cards),
-              bool(with_tagforce), int(side_limit)),
+              bool(with_tagforce), int(side_limit), int(masterduel_pages)),
         daemon=True,
     )
     thread.start()
@@ -170,8 +171,45 @@ def _fetch_missing_sides(limit):
     return done
 
 
+def _ingest_masterduel(arch_map, name_index, tagger, pages):
+    """Mazzi del meta di Master Duel, con i piazzamenti."""
+    _log("Master Duel: scarico la tabella delle carte...")
+    card_map = masterduel.fetch_card_map()
+    _log("Master Duel: %d carte mappate." % len(card_map))
+
+    raw_decks = masterduel.fetch_top_decks(
+        pages=pages,
+        progress=lambda page, n: _log("Master Duel: pagina %d, %d mazzi." % (page, n)),
+    )
+
+    batch = {}
+    for raw in raw_decks:
+        deck = masterduel.to_deck(raw, card_map)
+        if not deck:
+            continue
+        deck["archetypes"] = sources.derive_archetypes(
+            deck["name"], deck["main"], deck["extra"], arch_map, name_index
+        )
+        # Il sito dichiara l'archetipo: vale piu' della deduzione, ma
+        # solo se e' un archetipo che conosciamo davvero.
+        declared = deck.pop("declared_archetype", None)
+        if declared and declared in name_index.values():
+            deck["archetypes"] = [declared] + [
+                a for a in deck["archetypes"] if a != declared
+            ]
+        deck["archetype"] = deck["archetypes"][0] if deck["archetypes"] else ""
+        deck["strategies"] = tagger.tag(deck["name"], deck["main"], deck["extra"])
+        batch[deck["deck_num"]] = deck
+
+    if batch:
+        db.upsert_decks(list(batch.values()))
+    db.set_meta("last_masterduel_update", db.now_iso())
+    _log("Master Duel: %d mazzi salvati." % len(batch))
+    return len(batch)
+
+
 def _run(pages_per_format, formats, with_cards, with_tagforce=True,
-         side_limit=300):
+         side_limit=300, masterduel_pages=masterduel.MAX_PAGES):
     try:
         formats = [f for f in (formats or sources.FORMATS) if f in sources.FORMATS]
         if not formats:
@@ -254,6 +292,16 @@ def _run(pages_per_format, formats, with_cards, with_tagforce=True,
                     deck_total += len(normalized)
                 done += 1
                 _set(done=done, decks_saved=deck_total)
+
+        if masterduel_pages:
+            _set(phase="masterduel")
+            try:
+                deck_total += _ingest_masterduel(
+                    arch_map, name_index, tagger, masterduel_pages
+                )
+            except masterduel.MasterDuelError as exc:
+                _log("Master Duel saltato: %s" % exc)
+            _set(decks_saved=deck_total)
 
         if with_tagforce:
             _set(phase="tagforce")

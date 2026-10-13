@@ -766,7 +766,10 @@ const Store = (() => {
     const name = (deck.format || "").toLowerCase();
     if (name.includes("goat")) return "goat";
     if (name.includes("ocg") || name.includes("world")) return "ocg";
-    if (name.startsWith("tag force")) return null;   // videogioco: nessuna lista
+    // Tag Force e Master Duel hanno regole proprie e la fonte non ne
+    // pubblica la lista: meglio nessun verdetto che uno sbagliato.
+    if (name.startsWith("tag force")) return null;
+    if (name.includes("master duel")) return null;
     return "tcg";
   }
 
@@ -1023,6 +1026,86 @@ const Store = (() => {
     return out.slice(0, limit);
   }
 
+
+  // ---------------------------------------------------- archetipi
+
+  /**
+   * Il ritratto di un archetipo: le sue carte, i mazzi che lo giocano,
+   * dove si gioca e con cosa viene accostato.
+   */
+  function archetypeProfile(name) {
+    if (!name) return null;
+
+    const ownCards = [];
+    for (const c of cardsById.values()) {
+      if (c.archetype === name) ownCards.push(c);
+    }
+
+    const matching = decks.filter(
+      (d) => d.archetype === name || (d.archetypes || []).includes(name)
+    );
+    if (!ownCards.length && !matching.length) return null;
+
+    // Quanto ogni carta dell'archetipo viene davvero giocata.
+    const played = ownCards
+      .map((c) => ({
+        id: c.id,
+        name: cardName(c),
+        zone: cardZone(c),
+        decks: cardDecks(c.id).length,
+        inArchetype: matching.filter((d) => {
+          const key = c.id;
+          return ["main", "extra", "side"].some((z) =>
+            (d[z] || []).some((id) => canonical(id) === key)
+          );
+        }).length,
+      }))
+      .sort((a, b) => b.inArchetype - a.inArchetype || a.name.localeCompare(b.name, "it"));
+
+    const tally = (pick) => {
+      const counts = new Map();
+      for (const d of matching) {
+        const value = pick(d);
+        if (value) counts.set(value, (counts.get(value) || 0) + 1);
+      }
+      return [...counts.entries()]
+        .sort((a, b) => b[1] - a[1])
+        .map(([key, count]) => ({ key, count }));
+    };
+
+    // Gli archetipi con cui viene mescolato piu' spesso.
+    const partners = new Map();
+    for (const d of matching) {
+      for (const other of d.archetypes || []) {
+        if (other !== name) partners.set(other, (partners.get(other) || 0) + 1);
+      }
+    }
+
+    return {
+      name,
+      cards: played,
+      cardCount: ownCards.length,
+      deckCount: matching.length,
+      formats: tally((d) => d.format).slice(0, 8),
+      strategies: tally((d) => d.strategy)
+        .slice(0, 5)
+        .map((s) => ({ ...s, label: (meta.strategy_labels || {})[s.key] || s.key })),
+      partners: [...partners.entries()]
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 8)
+        .map(([key, count]) => ({ key, count })),
+      topDecks: matching
+        .slice()
+        .sort((a, b) => (b.views || 0) - (a.views || 0) || b.deck_num - a.deck_num)
+        .slice(0, 8),
+    };
+  }
+
+  /** Archetipi che hanno almeno un mazzo, dal piu' giocato. */
+  function archetypeList() {
+    return archetypes();
+  }
+
   function stats() {
     return {
       decks: decks.length,
@@ -1044,6 +1127,7 @@ const Store = (() => {
     banLimit, banStatus, banIssues, formatOf,
     buildYdke, parseYdke, deckToHash, deckFromHash,
     deckStats, atLeast, suggestCards, similarDecks,
+    archetypeProfile, archetypeList,
     get language() { return lang; },
     get banFormats() { return BAN_FORMAT_LABELS; },
     savedDecks, saveDeck, deleteSavedDeck, storageWorks,
