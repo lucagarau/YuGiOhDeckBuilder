@@ -174,6 +174,9 @@ const Store = (() => {
         defense: c && c.defense,
         archetype: c && c.archetype,
         descr: c && c.descr,
+        linkval: c && c.linkval,
+        link_markers: (c && c.link_markers) || [],
+        scale: c && c.scale,
         group: group(c),
         known: Boolean(c),
       });
@@ -193,6 +196,7 @@ const Store = (() => {
   // ---------------------------------------------------------------- filtri
 
   function matches(d, f) {
+    if (f.cardId && !f.cardDecks.has(d.deck_num)) return false;
     if (f.q && !d._search.includes(f.q)) return false;
     if (f.formats.length && !f.formats.includes(d._format)) return false;
     if (f.archetypes.length && !f.archetypes.some((a) => d._archetypes.has(a)))
@@ -210,11 +214,14 @@ const Store = (() => {
   function normalize(filters) {
     const list = (v) =>
       (Array.isArray(v) ? v : v ? [v] : []).filter(Boolean);
+    const cardId = filters.cardId ? Number(filters.cardId) : null;
     return {
       q: (filters.q || "").trim().toLowerCase(),
       formats: list(filters.format).map((v) => v.toLowerCase()),
       archetypes: list(filters.archetype),
       strategies: list(filters.strategy),
+      cardId,
+      cardDecks: cardId ? new Set(cardDecks(cardId)) : null,
     };
   }
 
@@ -344,6 +351,131 @@ const Store = (() => {
     );
   }
 
+
+  // ------------------------------------------------- ricerca fra le carte
+
+  // Due indici pesanti da costruire e inutili finche' nessuno apre la
+  // sezione carte: si preparano alla prima richiesta, non al caricamento.
+  let deckIndex = null;
+  let cardList = null;
+
+  function canonical(id) {
+    return aliases.get(id) || id;
+  }
+
+  /** {passcode canonico: [numeri dei mazzi che la usano]} */
+  function buildDeckIndex() {
+    const index = new Map();
+    for (const d of decks) {
+      // Un mazzo che ha la stessa carta nel main e nell'extra va contato
+      // una volta sola.
+      const seen = new Set();
+      for (const zone of [d.main, d.extra, d.side]) {
+        for (const raw of zone || []) seen.add(canonical(raw));
+      }
+      for (const id of seen) {
+        const bucket = index.get(id);
+        if (bucket) bucket.push(d.deck_num);
+        else index.set(id, [d.deck_num]);
+      }
+    }
+    return index;
+  }
+
+  function cardDecks(id) {
+    if (!deckIndex) deckIndex = buildDeckIndex();
+    return deckIndex.get(canonical(id)) || [];
+  }
+
+  function cardDeckCount(id) {
+    return cardDecks(id).length;
+  }
+
+  function decksWithCard(id) {
+    const nums = new Set(cardDecks(id));
+    return decks.filter((d) => nums.has(d.deck_num));
+  }
+
+  function buildCardList() {
+    if (!deckIndex) deckIndex = buildDeckIndex();
+    return [...cardsById.values()].map((c) => {
+      const kind = (c.type || "").toLowerCase();
+      return Object.assign({}, c, {
+        group: group(c),
+        // Cercare anche nell'effetto e' il motivo per cui si viene qui:
+        // "banish", "negate", "once per turn".
+        _search: `${c.name || ""}\u0000${c.descr || ""}`.toLowerCase(),
+        _deckCount: cardDeckCount(c.id),
+        // Livello, rango e valore Link occupano la stessa casella.
+        _rank: c.linkval != null ? c.linkval : c.level,
+        _isSpellTrap: kind.includes("spell") || kind.includes("trap"),
+      });
+    });
+  }
+
+  function allCards() {
+    if (!cardList) cardList = buildCardList();
+    return cardList;
+  }
+
+  const CARD_SORTS = {
+    decks: (a, b) => b._deckCount - a._deckCount || a.name.localeCompare(b.name, "it"),
+    name: (a, b) => a.name.localeCompare(b.name, "it"),
+    atk: (a, b) => (b.atk ?? -1) - (a.atk ?? -1) || a.name.localeCompare(b.name, "it"),
+    def: (a, b) => (b.defense ?? -1) - (a.defense ?? -1) || a.name.localeCompare(b.name, "it"),
+    level: (a, b) => (b._rank ?? -1) - (a._rank ?? -1) || a.name.localeCompare(b.name, "it"),
+  };
+
+  function searchCards(filters = {}) {
+    const q = (filters.q || "").trim().toLowerCase();
+    const group_ = filters.group || "";
+    const attribute = filters.attribute || "";
+    const race = filters.race || "";
+    const archetype = filters.archetype || "";
+    const level = filters.level === "" || filters.level == null
+      ? null
+      : Number(filters.level);
+
+    let found = allCards().filter((c) => {
+      if (q && !c._search.includes(q)) return false;
+      if (group_ && c.group !== group_) return false;
+      if (attribute && c.attribute !== attribute) return false;
+      if (race && c.race !== race) return false;
+      if (archetype && c.archetype !== archetype) return false;
+      if (level != null && c._rank !== level) return false;
+      return true;
+    });
+
+    found = found.slice().sort(CARD_SORTS[filters.sort] || CARD_SORTS.decks);
+
+    const perPage = Math.max(1, Math.min(PER_PAGE_MAX, filters.perPage || 36));
+    const pages = Math.max(1, Math.ceil(found.length / perPage));
+    const page = Math.max(1, Math.min(pages, filters.page || 1));
+    const start = (page - 1) * perPage;
+    return {
+      total: found.length,
+      page, pages, per_page: perPage,
+      items: found.slice(start, start + perPage),
+    };
+  }
+
+  /** Valori effettivamente presenti, per riempire i menu dei filtri. */
+  function cardFacets() {
+    const attributes = new Set();
+    const races = new Set();
+    const levels = new Set();
+    for (const c of allCards()) {
+      if (c.attribute) attributes.add(c.attribute);
+      if (c.race) races.add(c.race);
+      if (c._rank != null) levels.add(c._rank);
+    }
+    return {
+      attributes: [...attributes].sort(),
+      races: [...races].sort((a, b) => a.localeCompare(b, "it")),
+      levels: [...levels].sort((a, b) => a - b),
+    };
+  }
+
   function stats() {
     return {
       decks: decks.length,
@@ -359,6 +491,7 @@ const Store = (() => {
   return {
     load, stats, search, count, random, deck, card, expand, imgUrl, imgFallback,
     formats, archetypes, strategies, buildYdk, ydkFilename, downloadYdk,
+    searchCards, cardFacets, cardDeckCount, decksWithCard,
     get capabilities() { return caps; },
     get meta() { return meta; },
   };

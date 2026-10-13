@@ -294,3 +294,137 @@ input:focus, select:focus { outline: 2px solid var(--blue); outline-offset: -1px
 .site-footer p { margin: 0 0 8px; max-width: 95ch; }
 .site-footer p:last-child { margin-bottom: 0; }
 .site-footer a { color: #7fb2e4; }
+
+/* ------------------------------------------------------ scheda carta */
+
+.card-tile { cursor: pointer; border-radius: 6px; }
+.card-tile:hover img { outline: 2px solid var(--accent); outline-offset: 1px; }
+.card-tile:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+
+.card-overlay { z-index: 60; }          /* sopra la finestra del mazzo */
+.card-modal {
+  position: relative;
+  /* Misura sul viewport, non in percentuale: dentro una griglia centrata
+     il 100% si risolve sul contenuto e la finestra si stringe da sola. */
+  width: min(820px, 100vw - 40px);
+  max-height: 92vh; overflow-y: auto; overflow-x: hidden;
+  background: var(--bg-soft); border: 1px solid var(--line);
+  border-radius: 14px; padding: 22px;
+}
+
+/* La griglia va qui, non su .card-modal: i figli di quella sono il
+   pulsante di chiusura e questo contenitore, non immagine e testo. */
+.card-modal-body {
+  display: grid; gap: 22px;
+  grid-template-columns: minmax(0, 250px) minmax(0, 1fr);
+  align-items: start;
+}
+.icon-close {
+  position: absolute; top: 10px; right: 12px; z-index: 1;
+  background: rgba(8, 10, 14, .75); color: var(--text);
+  border: 1px solid var(--line); border-radius: 8px;
+  width: 32px; height: 32px; font-size: 20px; line-height: 1;
+  cursor: pointer;
+}
+.icon-close:hover { background: #222b3a; }
+
+.card-art img {
+  width: 100%; border-radius: 8px; display: block;
+  background: #0b0e13; aspect-ratio: 59 / 86;
+}
+.card-info h2 { font-size: 20px; line-height: 1.3; padding-right: 36px; }
+.card-kind {
+  color: var(--muted); font-size: 13px; margin: 6px 0 14px;
+  display: flex; gap: 10px; flex-wrap: wrap; align-items: center;
+}
+.card-qty {
+  color: var(--accent); background: var(--accent-soft);
+  border: 1px solid #4b3d19; border-radius: 99px;
+  padding: 2px 9px; font-size: 11px;
+}
+
+.stats {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(118px, 1fr));
+  gap: 8px; margin: 0 0 16px;
+}
+.stat {
+  background: var(--bg-card); border: 1px solid var(--line);
+  border-radius: 8px; padding: 7px 10px;
+}
+.stat dt { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .4px; }
+.stat dd { margin: 2px 0 0; font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums; }
+
+.arrows {
+  display: grid; grid-template-columns: repeat(3, 20px);
+  gap: 2px; margin: 0 0 14px;
+}
+.arrow {
+  display: grid; place-items: center;
+  width: 20px; height: 20px; border-radius: 4px;
+  background: var(--bg-card); border: 1px solid var(--line);
+  color: var(--muted); font-size: 13px;
+}
+.arrow.on { background: var(--accent-soft); border-color: #4b3d19; color: var(--accent); }
+.arrow.mid { background: transparent; border-style: dashed; }
+
+.card-text {
+  background: var(--bg); border: 1px solid var(--line);
+  border-radius: 8px; padding: 12px 14px;
+  font-size: 14px; line-height: 1.65; white-space: pre-wrap;
+}
+
+@media (max-width: 620px) {
+  .card-modal-body { grid-template-columns: 1fr; }
+  .card-art { max-width: 210px; margin: 0 auto; }
+}
+
+/* -------------------------------------------------- schede di sezione */
+
+.tabs { display: flex; gap: 4px; }
+.tab {
+  font: inherit; cursor: pointer;
+  padding: 8px 18px; border-radius: 8px;
+  border: 1px solid transparent; background: transparent;
+  color: var(--muted);
+}
+.tab:hover { color: var(--text); background: var(--bg-card); }
+.tab.active {
+  color: var(--text); background: var(--bg-card);
+  border-color: var(--line); font-weight: 620;
+}
+
+.results-left { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.filter-chip { font-size: 12px; }
+.filter-chip strong { font-weight: 650; }
+
+/* ------------------------------------------------------ sfoglia carte */
+
+.card-browse {
+  display: grid; gap: 12px;
+  grid-template-columns: repeat(auto-fill, minmax(124px, 1fr));
+}
+.browse-tile {
+  cursor: pointer; display: flex; flex-direction: column; gap: 6px;
+  background: var(--bg-card); border: 1px solid var(--line);
+  border-radius: var(--radius); padding: 8px;
+  transition: transform .12s, border-color .12s;
+}
+.browse-tile:hover { transform: translateY(-3px); border-color: var(--accent); }
+.browse-tile:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+.browse-tile img {
+  width: 100%; border-radius: 5px; display: block;
+  background: #0b0e13; aspect-ratio: 59 / 86;
+}
+.browse-name {
+  font-size: 12px; line-height: 1.35;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.used { font-size: 11px; color: var(--accent); font-variant-numeric: tabular-nums; }
+.used.none { color: var(--muted); }
+
+.card-decks { margin-top: 14px; width: 100%; justify-content: center; }
+
+#cQuery { flex: 1 1 260px; }
+#cGroup, #cSort { flex: 0 1 190px; }
+#cAttribute, #cRace, #cLevel, #cArchetype { flex: 0 1 150px; }

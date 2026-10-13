@@ -105,6 +105,21 @@ JSON, ne' il sito.
 - **Side deck.** La ricerca mazzi non lo restituisce: si trova solo nella
   pagina HTML del mazzo. Viene recuperato alla prima apertura del mazzo e
   salvato in archivio, cosi' il `.ydk` e' completo.
+- **Scheda carta.** Cliccando una carta del mazzo si apre una seconda
+  finestra sopra la prima. I campi arrivano tutti da `cards.json`:
+  `linkval`, `link_markers` e `scale` sono stati aggiunti apposta, perche'
+  senza di essi i mostri Link risulterebbero privi di livello e difesa e i
+  Pendulum senza scala. La riga delle statistiche si adatta al tipo:
+  "Rango" per gli Xyz, "LINK-n" piu' le frecce per i Link, nessuna difesa
+  per i Link, sottotipo (Normal, Quick-Play, Continuous) per magie e
+  trappole.
+- **Sezione carte e "mazzi con questa carta".** Servono un indice
+  `passcode -> mazzi` e una copia delle carte con il testo in minuscolo
+  per la ricerca sull'effetto. Sono entrambi pesanti e inutili finche'
+  nessuno apre quella sezione, quindi si costruiscono alla prima
+  richiesta, non al caricamento. L'indice passa dai passcode canonici:
+  nei mazzi ci sono 67 artwork alternativi usati 921 volte, e senza
+  ricondurli alla carta vera i conteggi sarebbero sbagliati.
 - **Artwork alternativi.** Una carta puo' avere piu' passcode (Ash Blossom e'
   sia `14558127` che `14558128`). I mazzi usano anche quelli secondari, che
   la tabella `card_aliases` riconduce alla carta vera; il `.ydk` conserva

@@ -35,8 +35,23 @@ autore lo dichiara, cosi' lo riconosce l'app guardando le carte.
 2. **Clicca un mazzo** per vederlo intero prima di scaricarlo: main deck,
    extra e side, con le immagini di tutte le carte e il conteggio di
    mostri, magie e trappole.
-3. **Scarica .ydk** per salvare il file. _Anteprima .ydk_ ti mostra prima
+3. **Clicca una carta** per vederne la scheda: immagine grande, effetto
+   completo, attributo, tipo, livello (o rango, o valore Link con le
+   frecce), ATK e DEF, archetipo e passcode. Da li' il tasto **Mazzi con
+   questa carta** ti mostra tutti i mazzi che la usano.
+4. **Scarica .ydk** per salvare il file. _Anteprima .ydk_ ti mostra prima
    cosa contiene.
+
+### La sezione Carte
+
+In alto puoi passare da **Mazzi** a **Carte** e sfogliare tutte le carte
+che compaiono nell'archivio. Si cercano per nome **o per effetto** (prova
+"banish", "once per turn") e si filtrano per categoria, attributo, tipo,
+livello e archetipo.
+
+Di default sono ordinate per quanto vengono usate, cosi' vedi subito
+quali sono le piu' giocate; sotto ogni carta c'e' in quanti mazzi
+compare, e cliccandola si apre la stessa scheda di dettaglio.
 
 ### Il tasto Random
 

@@ -18,6 +18,10 @@ const state = {
   strategyLabels: {},
   randomArchetypes: [],
   lastRandom: false,
+  view: "decks",
+  cardPage: 1,
+  cardsReady: false,
+  cardFilter: null,
 };
 
 async function api(path, options) {
@@ -119,6 +123,7 @@ async function fillUpdateFormats() {
 
 function currentFilters() {
   return {
+    cardId: state.cardFilter ? state.cardFilter.id : null,
     q: $("#fQuery").value.trim(),
     format: $("#fFormat").value,
     archetype: $("#fArchetype").value.trim(),
@@ -146,6 +151,17 @@ function search() {
   grid.querySelectorAll(".deck-card").forEach((el) => {
     el.addEventListener("click", () => openDeck(Number(el.dataset.num)));
   });
+
+  const note = $("#cardFilterNote");
+  if (state.cardFilter) {
+    note.innerHTML =
+      `contengono <strong>${escapeHtml(state.cardFilter.name)}</strong>` +
+      `<button aria-label="Togli il filtro">&times;</button>`;
+    note.classList.remove("hidden");
+    note.querySelector("button").addEventListener("click", clearCardFilter);
+  } else {
+    note.classList.add("hidden");
+  }
 
   const empty = $("#emptyState");
   if (!data.total) {
@@ -324,9 +340,8 @@ function zoneHtml(title, entries, total) {
   const tiles = entries
     .map(
       (e) => `
-    <div class="card-tile" title="${escapeHtml(e.name)}${
-        e.descr ? "\n\n" + escapeHtml(e.descr.slice(0, 300)) : ""
-      }">
+    <div class="card-tile" data-id="${e.id}" role="button" tabindex="0"
+         title="${escapeHtml(e.name)} - clicca per i dettagli">
       <img loading="lazy" src="${imgUrl(e.id)}" alt="${escapeHtml(e.name)}"
            data-card-id="${e.id}" onerror="Store.imgFallback(this)">
       <span class="qty">x${e.qty}</span>
@@ -343,6 +358,234 @@ function zoneHtml(title, entries, total) {
     </div>
     <div class="card-grid">${tiles}</div>
   </section>`;
+}
+
+
+
+// --------------------------------------------------------- vista carte
+
+function showView(name) {
+  const cards = name === "cards";
+  $("#viewDecks").classList.toggle("hidden", cards);
+  $("#viewCards").classList.toggle("hidden", !cards);
+  $("#tabDecks").classList.toggle("active", !cards);
+  $("#tabCards").classList.toggle("active", cards);
+  $("#tabDecks").setAttribute("aria-selected", String(!cards));
+  $("#tabCards").setAttribute("aria-selected", String(cards));
+  // La modalita' casuale riguarda i mazzi: fuori da li' non ha senso.
+  if (cards) $("#randomPanel").classList.add("hidden");
+  $("#btnRandomMode").classList.toggle("hidden", cards);
+  state.view = name;
+  if (cards && !state.cardsReady) {
+    fillCardFilters();
+    state.cardsReady = true;
+  }
+  if (cards) searchCards();
+}
+
+function fillCardFilters() {
+  const facets = Store.cardFacets();
+  const fill = (sel, values, label) => {
+    const el = $(sel);
+    const kept = el.value;
+    el.innerHTML = `<option value="">${label}</option>`;
+    for (const v of values) {
+      const opt = document.createElement("option");
+      opt.value = v;
+      opt.textContent = v;
+      el.appendChild(opt);
+    }
+    el.value = kept;
+  };
+  fill("#cAttribute", facets.attributes, "Ogni attributo");
+  fill("#cRace", facets.races, "Ogni tipo");
+  fill("#cLevel", facets.levels, "Ogni livello");
+}
+
+function cardFilters() {
+  return {
+    q: $("#cQuery").value.trim(),
+    group: $("#cGroup").value,
+    attribute: $("#cAttribute").value,
+    race: $("#cRace").value,
+    level: $("#cLevel").value,
+    archetype: $("#cArchetype").value.trim(),
+    sort: $("#cSort").value,
+    page: state.cardPage,
+    perPage: 36,
+  };
+}
+
+function searchCards() {
+  const data = Store.searchCards(cardFilters());
+  state.cardPage = data.page;
+
+  $("#cCount").textContent = data.total
+    ? `${data.total.toLocaleString("it-IT")} carte trovate`
+    : "";
+  $("#cPageLabel").textContent = `${data.page} / ${data.pages}`;
+  $("#cPrev").disabled = data.page <= 1;
+  $("#cNext").disabled = data.page >= data.pages;
+
+  const grid = $("#cardGrid");
+  grid.innerHTML = data.items.map(browseCard).join("");
+  grid.querySelectorAll(".browse-tile").forEach((el) => {
+    el.addEventListener("click", () => openCard(cardEntry(Number(el.dataset.id))));
+  });
+
+  const empty = $("#cEmpty");
+  empty.textContent = "Nessuna carta corrisponde ai filtri.";
+  empty.classList.toggle("hidden", Boolean(data.total));
+}
+
+function browseCard(c) {
+  const used = c._deckCount
+    ? `<span class="used">${c._deckCount} mazz${c._deckCount > 1 ? "i" : "o"}</span>`
+    : '<span class="used none">nessun mazzo</span>';
+  return `
+  <article class="browse-tile" data-id="${c.id}" role="button" tabindex="0"
+           title="${escapeHtml(c.name)}">
+    <img loading="lazy" src="${imgUrl(c.id)}" alt="${escapeHtml(c.name)}"
+         data-card-id="${c.id}" onerror="Store.imgFallback(this)">
+    <div class="browse-name">${escapeHtml(c.name)}</div>
+    ${used}
+  </article>`;
+}
+
+/** Una carta fuori da un mazzo: stessa forma delle voci del mazzo. */
+function cardEntry(id) {
+  const entry = Store.expand([id])[0];
+  if (entry) entry.qty = 0;          // non e' in un mazzo: niente conteggio
+  return entry;
+}
+
+/** Dalla scheda della carta ai mazzi che la usano. */
+function decksWithCurrentCard(id, name) {
+  state.cardFilter = { id, name };
+  closeCard();
+  closeDeck();
+  showView("decks");
+  $("#fQuery").value = "";
+  $("#fFormat").value = "";
+  $("#fArchetype").value = "";
+  $("#fStrategy").value = "";
+  state.page = 1;
+  search();
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+function clearCardFilter() {
+  state.cardFilter = null;
+  state.page = 1;
+  search();
+}
+
+// --------------------------------------------------------- scheda carta
+
+// I mostri Link non hanno livello ne' difesa, gli Xyz hanno il rango al
+// posto del livello: la riga va costruita in base al tipo di carta.
+const ARROWS = {
+  "Top-Left": "\u2196", Top: "\u2191", "Top-Right": "\u2197",
+  Left: "\u2190", Right: "\u2192",
+  "Bottom-Left": "\u2199", Bottom: "\u2193", "Bottom-Right": "\u2198",
+};
+const ARROW_ORDER = [
+  "Top-Left", "Top", "Top-Right",
+  "Left", null, "Right",
+  "Bottom-Left", "Bottom", "Bottom-Right",
+];
+
+function linkArrows(markers) {
+  if (!markers || !markers.length) return "";
+  const cells = ARROW_ORDER.map((key) => {
+    if (key === null) return '<span class="arrow mid"></span>';
+    const on = markers.includes(key);
+    return `<span class="arrow${on ? " on" : ""}">${on ? ARROWS[key] : ""}</span>`;
+  }).join("");
+  return `<div class="arrows" title="Frecce Link">${cells}</div>`;
+}
+
+function statRows(c) {
+  const kind = (c.type || "").toLowerCase();
+  const frame = (c.frame_type || "").toLowerCase();
+  const rows = [];
+
+  if (c.group === "Mostri") {
+    if (c.attribute) rows.push(["Attributo", c.attribute]);
+    if (c.race) rows.push(["Tipo", c.race]);
+    if (c.linkval != null) rows.push(["Link", "LINK-" + c.linkval]);
+    else if (frame.includes("xyz")) rows.push(["Rango", c.level]);
+    else if (c.level != null) rows.push(["Livello", c.level]);
+    if (c.scale != null) rows.push(["Scala Pendulum", c.scale]);
+    if (c.atk != null) rows.push(["ATK", c.atk]);
+    // Un Link non ha difesa: mostrare "0" sarebbe sbagliato.
+    if (c.linkval == null && c.defense != null) rows.push(["DEF", c.defense]);
+  } else if (c.race) {
+    // Per magie e trappole "race" e' il sottotipo: Continua, Rapida...
+    rows.push([kind.includes("trap") ? "Trappola" : "Magia", c.race]);
+  }
+
+  if (c.archetype) rows.push(["Archetipo", c.archetype]);
+  rows.push(["Passcode", c.id]);
+  return rows;
+}
+
+function openCard(entry) {
+  if (!entry) return;
+  const inDeck = entry.qty
+    ? `<span class="card-qty">${entry.qty} cop${entry.qty > 1 ? "ie" : "ia"} nel mazzo</span>`
+    : "";
+
+  const rows = statRows(entry)
+    .map(
+      ([label, value]) =>
+        `<div class="stat"><dt>${escapeHtml(label)}</dt><dd>${escapeHtml(value)}</dd></div>`
+    )
+    .join("");
+
+  const text = entry.descr
+    ? `<div class="card-text">${escapeHtml(entry.descr).replace(/\n/g, "<br>")}</div>`
+    : '<p class="muted">Testo non disponibile.</p>';
+
+  $("#cardBody").innerHTML = `
+    <div class="card-art">
+      <img src="${imgUrl(entry.id, "full")}" alt="${escapeHtml(entry.name)}"
+           data-card-id="${entry.id}" data-card-size="full"
+           onerror="Store.imgFallback(this)">
+    </div>
+    <div class="card-info">
+      <h2>${escapeHtml(entry.name)}</h2>
+      <p class="card-kind">${escapeHtml(entry.type || "")}${inDeck}</p>
+      ${linkArrows(entry.link_markers)}
+      <dl class="stats">${rows}</dl>
+      ${text}
+      <button class="btn btn-primary card-decks" data-id="${entry.id}"
+              data-name="${escapeHtml(entry.name)}">
+        Mazzi con questa carta (${Store.cardDeckCount(entry.id)})
+      </button>
+    </div>`;
+  const btn = $("#cardBody .card-decks");
+  btn.disabled = !Store.cardDeckCount(entry.id);
+  btn.addEventListener("click", () =>
+    decksWithCurrentCard(Number(btn.dataset.id), btn.dataset.name)
+  );
+  $("#cardOverlay").classList.remove("hidden");
+}
+
+function closeCard() {
+  $("#cardOverlay").classList.add("hidden");
+}
+
+/** Dalla tessera cliccata alla voce carta gia' calcolata per il mazzo. */
+function entryFromTile(tile) {
+  const id = Number(tile.dataset.id);
+  const deck = state.deck;
+  if (!deck) return null;
+  return (
+    [...deck.main_cards, ...deck.extra_cards, ...deck.side_cards].find(
+      (e) => e.id === id
+    ) || null
+  );
 }
 
 function closeDeck() {
@@ -473,6 +716,7 @@ function init() {
     });
   }
   $("#btnReset").addEventListener("click", () => {
+    state.cardFilter = null;
     $("#fQuery").value = "";
     $("#fFormat").value = "";
     $("#fArchetype").value = "";
@@ -523,6 +767,72 @@ function init() {
     updatePool();
   });
 
+  $("#deckBody").addEventListener("click", (ev) => {
+    const tile = ev.target.closest(".card-tile");
+    if (tile) openCard(entryFromTile(tile));
+  });
+  $("#deckBody").addEventListener("keydown", (ev) => {
+    if (ev.key !== "Enter" && ev.key !== " ") return;
+    const tile = ev.target.closest(".card-tile");
+    if (tile) {
+      ev.preventDefault();
+      openCard(entryFromTile(tile));
+    }
+  });
+  $("#btnCardClose").addEventListener("click", closeCard);
+  $("#cardOverlay").addEventListener("click", (ev) => {
+    if (ev.target === $("#cardOverlay")) closeCard();
+  });
+
+  $("#tabDecks").addEventListener("click", () => showView("decks"));
+  $("#tabCards").addEventListener("click", () => showView("cards"));
+
+  let cardTimer = null;
+  const cardsDebounced = () => {
+    clearTimeout(cardTimer);
+    cardTimer = setTimeout(() => {
+      state.cardPage = 1;
+      searchCards();
+    }, 220);
+  };
+  $("#cQuery").addEventListener("input", cardsDebounced);
+  $("#cArchetype").addEventListener("input", cardsDebounced);
+  for (const id of ["#cGroup", "#cAttribute", "#cRace", "#cLevel", "#cSort"]) {
+    $(id).addEventListener("change", () => {
+      state.cardPage = 1;
+      searchCards();
+    });
+  }
+  $("#cReset").addEventListener("click", () => {
+    for (const id of ["#cQuery", "#cGroup", "#cAttribute", "#cRace",
+                      "#cLevel", "#cArchetype"]) {
+      $(id).value = "";
+    }
+    $("#cSort").value = "decks";
+    state.cardPage = 1;
+    searchCards();
+  });
+  $("#cPrev").addEventListener("click", () => {
+    if (state.cardPage > 1) {
+      state.cardPage -= 1;
+      searchCards();
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
+  });
+  $("#cNext").addEventListener("click", () => {
+    state.cardPage += 1;
+    searchCards();
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  });
+  $("#cardGrid").addEventListener("keydown", (ev) => {
+    if (ev.key !== "Enter" && ev.key !== " ") return;
+    const tile = ev.target.closest(".browse-tile");
+    if (tile) {
+      ev.preventDefault();
+      openCard(cardEntry(Number(tile.dataset.id)));
+    }
+  });
+
   $("#btnClose").addEventListener("click", closeDeck);
   $("#btnYdk").addEventListener("click", downloadYdk);
   $("#btnPreview").addEventListener("click", previewYdk);
@@ -530,8 +840,10 @@ function init() {
     if (ev.target === $("#overlay")) closeDeck();
   });
   document.addEventListener("keydown", (ev) => {
-    if (ev.key === "Escape" && !$("#overlay").classList.contains("hidden"))
-      closeDeck();
+    if (ev.key !== "Escape") return;
+    // La scheda carta sta sopra al mazzo: si chiude per prima.
+    if (!$("#cardOverlay").classList.contains("hidden")) return closeCard();
+    if (!$("#overlay").classList.contains("hidden")) closeDeck();
   });
 
   Store.load()

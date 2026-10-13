@@ -16,6 +16,11 @@
       <p id="dbStats" class="muted">Caricamento archivio...</p>
     </div>
   </div>
+  <nav class="tabs" role="tablist">
+    <button id="tabDecks" class="tab active" role="tab" aria-selected="true">Mazzi</button>
+    <button id="tabCards" class="tab" role="tab" aria-selected="false">Carte</button>
+  </nav>
+
   <div class="topbar-actions">
     <button id="btnRandomMode" class="btn btn-ghost" title="Modalita' casuale">&#127922; Random</button>
     <button id="btnUpdate" class="btn btn-primary">Aggiorna DB</button>
@@ -74,6 +79,7 @@
   <pre id="progressLog" class="log"></pre>
 </section>
 
+<div id="viewDecks">
 <section class="filters">
   <input id="fQuery" type="search" placeholder="Cerca per nome del mazzo o autore..." autocomplete="off">
   <select id="fFormat"><option value="">Tutti i formati</option></select>
@@ -92,7 +98,10 @@
 
 <section class="results">
   <div class="results-head">
-    <span id="resultCount" class="muted"></span>
+    <div class="results-left">
+      <span id="resultCount" class="muted"></span>
+      <span id="cardFilterNote" class="chip filter-chip hidden"></span>
+    </div>
     <div class="pager">
       <button id="btnPrev" class="btn btn-ghost" disabled>&#8592;</button>
       <span id="pageLabel" class="muted">1</span>
@@ -102,6 +111,44 @@
   <div id="deckGrid" class="deck-grid"></div>
   <p id="emptyState" class="empty hidden"></p>
 </section>
+</div>
+
+<div id="viewCards" class="hidden">
+<section class="filters">
+  <input id="cQuery" type="search" placeholder="Cerca nel nome o nell'effetto...">
+  <select id="cGroup">
+    <option value="">Mostri, magie e trappole</option>
+    <option value="Mostri">Solo mostri</option>
+    <option value="Magie">Solo magie</option>
+    <option value="Trappole">Solo trappole</option>
+  </select>
+  <select id="cAttribute"><option value="">Ogni attributo</option></select>
+  <select id="cRace"><option value="">Ogni tipo</option></select>
+  <select id="cLevel"><option value="">Ogni livello</option></select>
+  <input id="cArchetype" list="archetypeList" placeholder="Archetipo..." autocomplete="off">
+  <select id="cSort">
+    <option value="decks">Piu' usate nei mazzi</option>
+    <option value="name">Nome</option>
+    <option value="atk">ATK piu' alto</option>
+    <option value="def">DEF piu' alta</option>
+    <option value="level">Livello piu' alto</option>
+  </select>
+  <button id="cReset" class="btn btn-ghost">Azzera</button>
+</section>
+
+<section class="results">
+  <div class="results-head">
+    <span id="cCount" class="muted"></span>
+    <div class="pager">
+      <button id="cPrev" class="btn btn-ghost" disabled>&#8592;</button>
+      <span id="cPageLabel" class="muted">1</span>
+      <button id="cNext" class="btn btn-ghost" disabled>&#8594;</button>
+    </div>
+  </div>
+  <div id="cardGrid" class="card-browse"></div>
+  <p id="cEmpty" class="empty hidden"></p>
+</section>
+</div>
 
 <div id="overlay" class="overlay hidden">
   <div class="modal" role="dialog" aria-modal="true" aria-labelledby="deckTitle">
@@ -119,6 +166,13 @@
       <button id="btnReroll" class="btn btn-ghost hidden">&#127922; Estrai un altro</button>
       <a id="linkSource" class="btn btn-ghost" target="_blank" rel="noopener">Apri la fonte</a>
     </footer>
+  </div>
+</div>
+
+<div id="cardOverlay" class="overlay card-overlay hidden">
+  <div class="card-modal">
+    <button id="btnCardClose" class="icon-close" aria-label="Chiudi">&times;</button>
+    <div id="cardBody" class="card-modal-body"></div>
   </div>
 </div>
 

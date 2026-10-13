@@ -21,7 +21,10 @@ CREATE TABLE IF NOT EXISTS cards (
     atk         INTEGER,
     defense     INTEGER,
     archetype   TEXT,
-    descr       TEXT
+    descr       TEXT,
+    linkval     INTEGER,
+    link_markers TEXT,
+    scale       INTEGER
 );
 
 -- Gli artwork alternativi hanno un passcode proprio: i mazzi possono usarlo
@@ -106,6 +109,13 @@ def connect():
 # Colonne aggiunte dopo la prima versione: gli archivi gia' creati non le
 # hanno, e CREATE TABLE IF NOT EXISTS non le aggiunge.
 MIGRATIONS = {
+    "cards": {
+        # Servono alla scheda della carta: i Link non hanno livello ne'
+        # difesa, i Pendulum hanno la scala.
+        "linkval": "INTEGER",
+        "link_markers": "TEXT",
+        "scale": "INTEGER",
+    },
     "decks": {
         "strategy": "TEXT",
         "strategies": "TEXT",
@@ -201,6 +211,9 @@ def upsert_cards(cards):
             c.get("def"),
             c.get("archetype"),
             c.get("desc"),
+            c.get("linkval"),
+            json.dumps(c.get("linkmarkers") or []),
+            c.get("scale"),
         )
         for c in cards
         if c.get("id") is not None
@@ -208,12 +221,14 @@ def upsert_cards(cards):
     conn = connect()
     conn.executemany(
         "INSERT INTO cards(id, name, type, frame_type, race, attribute, level, atk,"
-        " defense, archetype, descr) VALUES(?,?,?,?,?,?,?,?,?,?,?) "
+        " defense, archetype, descr, linkval, link_markers, scale)"
+        " VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?) "
         "ON CONFLICT(id) DO UPDATE SET name=excluded.name, type=excluded.type,"
         " frame_type=excluded.frame_type, race=excluded.race,"
         " attribute=excluded.attribute, level=excluded.level, atk=excluded.atk,"
         " defense=excluded.defense, archetype=excluded.archetype,"
-        " descr=excluded.descr",
+        " descr=excluded.descr, linkval=excluded.linkval,"
+        " link_markers=excluded.link_markers, scale=excluded.scale",
         rows,
     )
 
@@ -240,7 +255,7 @@ def upsert_cards(cards):
 
 CARD_COLUMNS = (
     "id, name, type, frame_type, race, attribute, level, atk, defense,"
-    " archetype, descr"
+    " archetype, descr, linkval, link_markers, scale"
 )
 
 

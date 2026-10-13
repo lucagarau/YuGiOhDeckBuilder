@@ -20,6 +20,7 @@ from . import db, strategies
 CARD_FIELDS = (
     "id", "name", "type", "frame_type", "race", "attribute",
     "level", "atk", "defense", "archetype", "descr",
+    "linkval", "link_markers", "scale",
 )
 
 DECK_FIELDS = (
@@ -77,8 +78,14 @@ def export_all(target_dir=None):
 
     cards = []
     for row in conn.execute("SELECT %s FROM cards" % ", ".join(CARD_FIELDS)):
-        if row["id"] in used_cards:
-            cards.append({k: row[k] for k in CARD_FIELDS})
+        if row["id"] not in used_cards:
+            continue
+        card = {k: row[k] for k in CARD_FIELDS}
+        # In archivio e' una stringa JSON, nell'interfaccia serve una lista.
+        card["link_markers"] = json.loads(card["link_markers"] or "[]")
+        if not card["link_markers"]:
+            del card["link_markers"]      # quasi sempre vuota: non pesarla
+        cards.append(card)
 
     alias_pairs = {
         str(a): c for a, c in aliases.items() if a in used_cards or c in used_cards
