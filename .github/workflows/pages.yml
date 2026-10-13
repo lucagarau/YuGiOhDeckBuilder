@@ -100,6 +100,14 @@ jobs:
 
   deploy:
     needs: build
+    # Su GitHub Free, Pages non e' disponibile per le repository private:
+    # finche' lo e', il sito viene costruito lo stesso (resta scaricabile
+    # dagli artifact del giro) ma la pubblicazione si salta, altrimenti
+    # ogni esecuzione fallirebbe con un 404.
+    # Rendendo pubblica la repository riparte da sola. Con un piano a
+    # pagamento si puo' forzare impostando la variabile PUBLISH_PAGES=true
+    # in Settings - Secrets and variables - Actions - Variables.
+    if: ${{ github.event.repository.private == false || vars.PUBLISH_PAGES == 'true' }}
     runs-on: ubuntu-latest
     environment:
       name: github-pages

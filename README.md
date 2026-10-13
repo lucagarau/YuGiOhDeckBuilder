@@ -1,5 +1,9 @@
 # Yu-Gi-Oh Deck Builder
 
+[![Aggiorna archivio e pubblica](https://github.com/lucagarau/YuGiOhDeckBuilder/actions/workflows/pages.yml/badge.svg)](https://github.com/lucagarau/YuGiOhDeckBuilder/actions/workflows/pages.yml)
+
+**Sito:** <https://lucagarau.github.io/YuGiOhDeckBuilder/>
+
 Webapp locale per cercare mazzi Yu-Gi-Oh presi da internet, filtrarli per
 formato, archetipo e funzionamento (burn, stun, chaos, monarca, ...),
 **vederli carta per carta** e scaricarli in `.ydk`
@@ -76,12 +80,22 @@ Quello che cambia e' solo cosa c'e' *intorno*:
 
 ## Pubblicare su GitHub Pages
 
-Una volta sola, nelle impostazioni del repository: **Settings → Pages →
-Source → GitHub Actions**.
+Una volta sola, su **Settings - Pages - Source**, scegliere **GitHub
+Actions**. Senza questo passaggio il sito viene costruito ma la
+pubblicazione fallisce con un 404.
 
-Poi `.github/workflows/pages.yml` fa il resto: gira alle 07:30 e 19:30
-(ora italiana), aggiorna l'archivio, esporta i JSON, assembla il sito e lo
-pubblica. Si puo' lanciare anche a mano da **Actions → Run workflow**,
+> **Repository private.** Sul piano GitHub Free, Pages funziona solo per
+> le repository pubbliche: finche' la repository resta privata la voce non
+> e' disponibile. Il workflow se ne accorge e salta il deploy invece di
+> fallire a ogni giro; appena la repository diventa pubblica riparte da
+> solo. Con un piano a pagamento (Pro, Team) si puo' pubblicare restando
+> privati: basta impostare la variabile `PUBLISH_PAGES=true` in
+> *Settings - Secrets and variables - Actions - Variables*. In entrambi i
+> casi il **sito** resta visibile a chiunque: privato e' solo il codice.
+
+Poi ci pensa `.github/workflows/pages.yml`: gira alle 07:30 e 19:30 (ora
+italiana), aggiorna l'archivio, esporta i JSON, assembla il sito e lo
+pubblica. Si puo' lanciare anche a mano da **Actions - Run workflow**,
 scegliendo quante pagine scaricare o chiedendo di ripubblicare senza
 riscaricare nulla.
 
@@ -90,120 +104,6 @@ accumula invece di ripartire da zero; se la cache sparisce, il giro
 successivo lo ricostruisce per intero senza che nessuno debba
 intervenire. In git non finisce nulla di generato: ne' il database, ne' i
 JSON, ne' il sito.
-
-## Come si usa
-
-1. **Aggiorna DB** scarica carte e mazzi da internet e li salva in SQLite.
-   L'ingranaggio accanto al tasto apre le opzioni: quante pagine scaricare
-   per formato (20 mazzi a pagina), se riscaricare anche il database carte,
-   e su quali formati limitarsi.
-2. **Cerca e filtra** per nome o autore, formato, archetipo, funzionamento
-   e ordinamento. I filtri lavorano sull'archivio locale, quindi sono
-   istantanei e funzionano anche offline.
-3. **Apri un mazzo** per vederlo per intero prima di scaricarlo: main, extra
-   e side deck con immagini, quantita' e conteggio mostri/magie/trappole.
-4. **Scarica .ydk** salva il file; **Anteprima .ydk** mostra il contenuto
-   esatto del file prima di salvarlo.
-5. **Random** apre la modalita' casuale: scegli uno o piu' formati,
-   archetipi e funzionamenti, vedi quanti mazzi rientrano nei criteri e
-   premi *Estrai un mazzo*. Dalla scheda del mazzo *Estrai un altro*
-   ripesca con gli stessi criteri. Le scelte dentro la stessa categoria
-   valgono in OR, fra categorie diverse in AND: "Goat **o** Edison,
-   **ma** burn".
-
-## Da dove vengono i dati
-
-### YGOPRODeck
-
-Mazzi competitivi e da community, via endpoint pubblici senza chiave:
-
-| Cosa | Endpoint |
-| --- | --- |
-| Database carte (~14.600 carte) | `db.ygoprodeck.com/api/v7/cardinfo.php` |
-| Ricerca mazzi (20 per pagina) | `ygoprodeck.com/api/decks/getDecks.php` |
-| Elenco archetipi (~660) | `ygoprodeck.com/api/autocompleteDeckArchetype.php` |
-| Side deck | pagina HTML del mazzo (vedi sotto) |
-| Immagini carte | `images.ygoprodeck.com`, via proxy locale con cache |
-
-### Tag Force (wiki Fandom)
-
-La saga PSP non e' su YGOPRODeck. I mazzi dei personaggi sono pero'
-documentati sul [wiki Fandom](https://yugioh.fandom.com) dentro template
-`{{Decklist}}`, che hanno struttura regolare e quindi si possono leggere:
-circa **2.700 mazzi** su tutti e sette i giochi, in una ventina di secondi.
-
-Due tipi di pagina:
-
-- le pagine personaggio `<Nome> (Tag Force)`, con una sezione *Decks*
-  divisa per gioco: coprono soprattutto Tag Force 3-6 e Special;
-- le pagine `<Gioco>: Character Deck Recipes`, che raccolgono in un elenco
-  unico i mazzi di Tag Force 1 e 2.
-
-Tre dettagli non ovvi, risolti leggendo i dati veri:
-
-- **Le pagine personaggio parlano anche di altri giochi.** Sotto *Decks*
-  compaiono sezioni per Nightmare Troubadour o Spirit Caller: una
-  sottosezione che non nomina Tag Force azzera il gioco corrente, cosi'
-  quei mazzi non entrano per sbaglio.
-- **I side deck sono blocchi `{{Decklist}}` separati.** "Back to Basics 1 -
-  Side Deck" e' il side di "Back to Basics 1", non un mazzo da 15 carte:
-  viene riagganciato al suo mazzo.
-- **Il wiki indica le carte per nome, non per passcode.** Il 97-98% si
-  risolve sul database carte locale; il resto sono carte mai uscite
-  dall'OCG o esclusive dei videogiochi. I mazzi che ne perderebbero piu'
-  della meta' vengono scartati, gli altri restano con l'elenco di cosa
-  manca in evidenza sulla scheda.
-
-### Tempi
-
-Un aggiornamento completo con le impostazioni predefinite (5 pagine x 22
-formati di YGOPRODeck, piu' tutto Tag Force) richiede circa un minuto e
-mezzo e porta a ~4.500 mazzi.
-
-### Formati disponibili
-
-I 22 formati di YGOPRODeck, fra cui Tournament Meta (TCG, OCG, Worlds,
-Genesys), Master Duel, Speed Duel, e i formati retro **Goat**, **Edison**,
-**Domain**, **Trinity**; piu' i sette giochi **Tag Force**, trattati come
-formati a se' stanti.
-
-### Archetipi
-
-L'API **non** espone l'archetipo del mazzo, quindi va dedotto. Due segnali
-imperfetti si correggono a vicenda:
-
-- **Le carte del mazzo.** Contare gli archetipi delle carte da solo non
-  basta: ogni mazzo retro risulterebbe "Greed" per via di Pot of Greed e
-  simili staple.
-- **Il titolo del mazzo.** Copre solo il 70% circa dei mazzi, ma e' preciso.
-
-Un archetipo citato nel titolo *e* presente fra le carte e' la prova piu'
-solida e ha la precedenza; in mancanza serve un archetipo con almeno 5 carte,
-altrimenti il mazzo resta senza etichetta. Sui dati reali copre circa l'85%
-dei mazzi ("Anime Kaiba" -> Blue-Eyes, "Z - One" -> Timelord, "Nash" ->
-Shark). Ogni mazzo tiene fino a 3 archetipi e il filtro li considera tutti.
-
-### Funzionamento (burn, stun, chaos, ...)
-
-Neanche questo e' esposto dalla sorgente, e il titolo lo dichiara solo nel 6%
-dei mazzi: il segnale principale sono quindi le carte. Ogni strategia ha
-carte firma, schemi cercati nel testo delle carte e soglie tarate sui mazzi
-che la dichiarano nel titolo. Un vero mazzo burn ha 10-22 carte che
-infliggono danno su 40, mentre "Burning Abyss", che burn non e', ne ha una
-sola: la soglia di 7 separa i due casi.
-
-Strategie riconosciute: **Burn**, **Stall**, **Stun/Floodgate**, **Chaos**,
-**OTK/FTK**, **Monarca**, **Exodia**, **Mill/Deck Out**, piu' tre ricavate
-dalla forma del mazzo quando non emergono carte firma (**Control** se ha
-almeno 12 trappole, **Combo** se l'Extra Deck e' pieno, **Aggro** altrimenti).
-
-OTK/FTK e' l'unica strategia in cui il titolo pesa quanto la soglia: un FTK
-moderno non ha carte firma, e' una linea di combo che vince al primo turno,
-quindi la dichiarazione dell'autore e' il dato migliore disponibile.
-
-Misurata sui mazzi che dichiarano la strategia nel titolo, la precisione e'
-del **95%** (80 su 84). Ogni mazzo tiene fino a 3 strategie e il filtro le
-considera tutte.
 
 ## Dettagli tecnici
 
@@ -287,3 +187,28 @@ era raggiungibile al momento dell'apertura. Riapri il mazzo per riprovare.
 - Solo consultazione e download: non si possono ancora creare o modificare
   mazzi propri (il `.ydk` prodotto e' quello dell'autore originale).
 - Nessun controllo di banlist o di legalita' per formato.
+
+## Crediti
+
+I dati non sono miei: l'app li raccoglie, li organizza e li converte in
+`.ydk`, ma ogni mazzo rimanda alla propria fonte.
+
+- **[YGOPRODeck](https://ygoprodeck.com)** — database delle carte, liste
+  dei mazzi e immagini.
+- **[Yu-Gi-Oh! Wiki](https://yugioh.fandom.com)** su Fandom — i mazzi dei
+  personaggi della saga *Tag Force*, disponibili con licenza
+  [CC BY-SA 3.0](https://creativecommons.org/licenses/by-sa/3.0/).
+- **[images.weserv.nl](https://images.weserv.nl)** — usato solo come
+  ripiego per le immagini quando il CDN delle carte non e' raggiungibile.
+
+Yu-Gi-Oh! e' un marchio di Konami Digital Entertainment. Questo e' un
+progetto amatoriale senza scopo di lucro, non affiliato ne' approvato da
+Konami, YGOPRODeck o Fandom; le immagini delle carte restano dei
+rispettivi proprietari. Se rappresenti uno di questi soggetti e vuoi che
+qualcosa venga rimosso, apri una issue.
+
+## Licenza
+
+Codice sotto licenza [MIT](LICENSE). La licenza copre il codice di questo
+repository, non i dati di terzi che l'applicazione scarica a runtime, che
+restano soggetti alle condizioni delle rispettive fonti.

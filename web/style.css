@@ -281,3 +281,16 @@ input:focus, select:focus { outline: 2px solid var(--blue); outline-offset: -1px
   border: 1px solid var(--line); border-radius: 99px;
   padding: 6px 12px; white-space: nowrap;
 }
+
+/* ---------------------------------------------------------- footer */
+
+.site-footer {
+  border-top: 1px solid var(--line);
+  padding: 20px 22px 32px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.7;
+}
+.site-footer p { margin: 0 0 8px; max-width: 95ch; }
+.site-footer p:last-child { margin-bottom: 0; }
+.site-footer a { color: #7fb2e4; }
