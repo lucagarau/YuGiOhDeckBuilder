@@ -54,7 +54,7 @@ def main():
     os.chdir(base)
 
     try:
-        from ygodeck import db, server
+        from ygodeck import db, export, server
 
         # Dentro l'eseguibile i percorsi vanno ancorati alla cartella
         # dell'eseguibile, non a quella dei moduli impacchettati.
@@ -62,6 +62,10 @@ def main():
             db.DB_PATH = os.path.join(base, "data", "ygodeck.db")
             server.WEB_DIR = os.path.join(getattr(sys, "_MEIPASS", base), "web")
             server.IMG_CACHE = os.path.join(base, "data", "imgcache")
+            # I JSON esportati stanno accanto all'eseguibile, non nel
+            # pacchetto: vengono riscritti a ogni aggiornamento.
+            server.EXPORT_DIR = os.path.join(base, "data", "export")
+            export.default_dir = lambda: server.EXPORT_DIR
 
         httpd, port = _free_port("127.0.0.1", server)
     except Exception as exc:

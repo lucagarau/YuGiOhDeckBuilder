@@ -138,6 +138,19 @@ def init():
     conn.commit()
 
 
+def checkpoint():
+    """Riversa il WAL dentro il file principale.
+
+    In journal_mode=WAL le scritture piu' recenti stanno in ygodeck.db-wal:
+    chi copia solo ygodeck.db (la cache della GitHub Action) si ritroverebbe
+    un archivio indietro di un aggiornamento.
+    """
+    try:
+        connect().execute("PRAGMA wal_checkpoint(TRUNCATE)")
+    except sqlite3.Error:
+        pass
+
+
 def now_iso():
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
@@ -571,6 +584,16 @@ def count_decks(formats=None, archetypes=None, strategies=None, q=""):
     return connect().execute(
         "SELECT COUNT(*) AS n FROM decks" + clause, params
     ).fetchone()["n"]
+
+
+def decks_without_side(limit=300):
+    """Mazzi di cui non si e' ancora tentato il recupero del side deck."""
+    return connect().execute(
+        "SELECT deck_num, pretty_url FROM decks"
+        " WHERE side_fetched = 0 AND pretty_url IS NOT NULL AND pretty_url <> ''"
+        " ORDER BY deck_num DESC LIMIT ?",
+        (int(limit),),
+    ).fetchall()
 
 
 def get_deck(deck_num):

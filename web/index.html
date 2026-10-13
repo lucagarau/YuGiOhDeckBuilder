@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Yu-Gi-Oh Deck Builder — .ydk</title>
-<link rel="stylesheet" href="/style.css">
+<link rel="stylesheet" href="style.css">
 </head>
 <body>
 
@@ -20,6 +20,7 @@
     <button id="btnRandomMode" class="btn btn-ghost" title="Modalita' casuale">&#127922; Random</button>
     <button id="btnUpdate" class="btn btn-primary">Aggiorna DB</button>
     <button id="btnUpdateOpts" class="btn btn-ghost" title="Opzioni di aggiornamento">&#9881;</button>
+    <span id="staticNote" class="static-note hidden" title="Il database viene rigenerato automaticamente due volte al giorno">aggiornato in automatico</span>
   </div>
 </header>
 
@@ -121,6 +122,7 @@
   </div>
 </div>
 
-<script src="/app.js"></script>
+<script src="store.js"></script>
+<script src="app.js"></script>
 </body>
 </html>

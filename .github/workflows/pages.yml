@@ -1,0 +1,109 @@
+name: Aggiorna archivio e pubblica su Pages
+
+# L'aggiornamento gira qui e non nel browser perche' YGOPRODeck non manda
+# intestazioni CORS: la ricerca mazzi si puo' chiamare solo da un server.
+# Il risultato viene congelato nei JSON che il sito statico poi legge.
+
+on:
+  schedule:
+    # Due volte al giorno (UTC): 05:30 e 17:30, cioe' 07:30 e 19:30 in Italia.
+    # Gli orari tondi sono i piu' congestionati su GitHub e vengono ritardati.
+    - cron: "30 5,17 * * *"
+  push:
+    branches: [main, master]
+    paths:
+      - "web/**"
+      - "ygodeck/**"
+      - "build_site.py"
+      - ".github/workflows/pages.yml"
+  workflow_dispatch:
+    inputs:
+      pages_per_format:
+        description: "Pagine da scaricare per formato"
+        default: "5"
+      skip_update:
+        description: "Ripubblica senza riscaricare nulla"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Una pubblicazione per volta, senza annullare quella in corso: a meta'
+# strada lascerebbe il sito con dati incoerenti.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # L'archivio si accumula fra un giro e l'altro: la cache evita di
+      # ripartire da zero ogni volta. Se manca, l'aggiornamento lo
+      # ricostruisce comunque per intero.
+      - name: Recupera l'archivio dal giro precedente
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            data/ygodeck.db
+            data/ygodeck.db-wal
+          key: ygodeck-db-${{ github.run_id }}
+          restore-keys: ygodeck-db-
+
+      - name: Aggiorna l'archivio
+        if: ${{ !inputs.skip_update }}
+        run: python app.py --update --pages ${{ inputs.pages_per_format || 5 }}
+
+      - name: Esporta i dati
+        if: ${{ inputs.skip_update }}
+        run: python app.py --export
+
+      - name: Metti l'archivio in cache
+        uses: actions/cache/save@v4
+        if: always()
+        with:
+          path: |
+            data/ygodeck.db
+            data/ygodeck.db-wal
+          key: ygodeck-db-${{ github.run_id }}
+
+      - name: Costruisci il sito
+        run: python build_site.py _site
+
+      - name: Riepilogo
+        run: |
+          {
+            echo "### Archivio pubblicato"
+            echo ""
+            python - <<'PY'
+          import json
+          meta = json.load(open("_site/data/meta.json", encoding="utf-8"))
+          stats = meta["stats"]
+          print(f"- **{stats['decks']}** mazzi, **{stats['cards']}** carte")
+          print(f"- **{stats['formats']}** formati, **{stats['archetypes']}** archetipi")
+          print(f"- generato: {meta['generated_at']}")
+          PY
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

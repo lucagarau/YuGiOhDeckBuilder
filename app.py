@@ -5,18 +5,30 @@
     python app.py --port 9000     porta diversa
     python app.py --no-browser    non apre il browser
     python app.py --update        aggiorna il database e termina
+    python app.py --export        riscrive solo i JSON e termina
 """
 import argparse
 import sys
 import threading
 import webbrowser
 
-from ygodeck import db, server, updater
+from ygodeck import db, export, server, updater
 
 
-def _run_cli_update(pages):
+def _run_export(target=None):
     db.init()
-    if not updater.start(pages_per_format=pages):
+    result = export.export_all(target)
+    print("Esportati %d mazzi e %d carte in %s" % (
+        result["decks"], result["cards"], result["dir"]))
+    for name, size in result["sizes"].items():
+        print("   %-12s %7.2f MB" % (name, size / 1048576))
+    return 0
+
+
+def _run_cli_update(pages, side_limit, with_tagforce):
+    db.init()
+    if not updater.start(pages_per_format=pages, side_limit=side_limit,
+                         with_tagforce=with_tagforce):
         print("Un aggiornamento e' gia' in corso.")
         return 1
 
@@ -50,10 +62,20 @@ def main():
                         help="aggiorna il database da riga di comando e termina")
     parser.add_argument("--pages", type=int, default=5,
                         help="pagine da scaricare per formato (20 mazzi a pagina)")
+    parser.add_argument("--export", nargs="?", const="", default=None,
+                        metavar="CARTELLA",
+                        help="riscrive i JSON per l'interfaccia e termina")
+    parser.add_argument("--side-limit", type=int, default=300,
+                        help="quanti side deck mancanti recuperare per giro")
+    parser.add_argument("--no-tagforce", action="store_true",
+                        help="salta l'importazione dei mazzi Tag Force")
     args = parser.parse_args()
 
+    if args.export is not None:
+        return _run_export(args.export or None)
     if args.update:
-        return _run_cli_update(args.pages)
+        return _run_cli_update(args.pages, args.side_limit,
+                               not args.no_tagforce)
 
     httpd = server.serve(args.host, args.port)
     url = "http://%s:%d/" % (args.host, args.port)

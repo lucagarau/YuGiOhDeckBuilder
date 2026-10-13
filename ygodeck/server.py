@@ -1,4 +1,15 @@
-"""Server HTTP locale: API JSON + file statici dell'interfaccia."""
+"""Server HTTP locale.
+
+Fa solo quello che il sito statico non puo' fare da solo:
+
+  - serve l'interfaccia (web/) e i dati esportati (data/export/);
+  - avvia l'aggiornamento del database e ne riporta l'avanzamento;
+  - fa da proxy con cache per le immagini delle carte.
+
+Ricerca, filtri, sorteggio e generazione del .ydk **non** stanno qui: sono
+in web/store.js, condiviso con la versione su GitHub Pages. Averli in un
+posto solo e' cio' che tiene allineate le due versioni.
+"""
 import json
 import mimetypes
 import os
@@ -7,62 +18,12 @@ import urllib.parse
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-from . import db, sources, strategies, updater, ydk
+from . import db, export, sources, updater
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 WEB_DIR = os.path.join(ROOT, "web")
+EXPORT_DIR = os.path.join(ROOT, "data", "export")
 IMG_CACHE = os.path.join(ROOT, "data", "imgcache")
-
-# Ordine di visualizzazione dentro ogni sezione del mazzo.
-MAIN_GROUPS = ("Mostri", "Magie", "Trappole")
-
-
-def _zone_group(card):
-    kind = (card.get("type") or "").lower()
-    if "spell" in kind:
-        return "Magie"
-    if "trap" in kind:
-        return "Trappole"
-    return "Mostri"
-
-
-def _sort_key(card):
-    return (
-        _zone_group(card) != "Mostri",
-        MAIN_GROUPS.index(_zone_group(card)),
-        -(card.get("level") or 0),
-        card.get("name") or "",
-    )
-
-
-def _expand(ids, cards):
-    """Da lista di passcode ripetuti a voci con quantita', dati e immagine."""
-    counts, order = {}, []
-    for cid in ids:
-        if cid not in counts:
-            order.append(cid)
-        counts[cid] = counts.get(cid, 0) + 1
-
-    entries = []
-    for cid in order:
-        card = cards.get(cid) or {"id": cid, "name": "Carta sconosciuta (%d)" % cid}
-        entries.append({
-            "id": cid,
-            "qty": counts[cid],
-            "name": card.get("name"),
-            "type": card.get("type"),
-            "frame_type": card.get("frame_type"),
-            "race": card.get("race"),
-            "attribute": card.get("attribute"),
-            "level": card.get("level"),
-            "atk": card.get("atk"),
-            "defense": card.get("defense"),
-            "archetype": card.get("archetype"),
-            "descr": card.get("descr"),
-            "group": _zone_group(card),
-        })
-    entries.sort(key=lambda e: _sort_key(e))
-    return entries
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -135,186 +96,73 @@ class Handler(BaseHTTPRequestHandler):
     # ------------------------------------------------------------------ API
 
     def _route_api(self, path, query):
-        if path == "/api/status":
-            return self._json({"stats": db.stats(), "update": updater.status()})
+        # L'interfaccia interroga questo per capire se e' in locale o su
+        # GitHub Pages, dove la richiesta fallisce e i tasti di
+        # aggiornamento restano nascosti.
+        if path == "/api/capabilities":
+            return self._json({"update": True, "imageProxy": True})
         if path == "/api/update":
             return self._json(updater.status())
         if path == "/api/formats":
-            return self._json({
-                "available": sources.FORMATS,
-                "in_db": db.distinct_formats(),
-            })
-        if path == "/api/archetypes":
-            return self._json({
-                "in_db": db.distinct_archetypes(),
-                "known": db.get_archetype_names(),
-            })
-        if path == "/api/strategies":
-            return self._json({
-                "labels": strategies.LABELS,
-                "in_db": [
-                    dict(s, label=strategies.LABELS.get(s["key"], s["key"]))
-                    for s in db.distinct_strategies()
-                ],
-            })
-        if path == "/api/decks":
-            return self._search(query)
+            return self._json({"available": sources.FORMATS})
         if path.startswith("/api/img/"):
             return self._image(path, query)
-
-        if path == "/api/decks/random":
-            return self._random(query)
-        if path == "/api/decks/pool":
-            return self._json({"pool": db.count_decks(
-                self._many(query, "format"),
-                self._many(query, "archetype"),
-                self._many(query, "strategy"),
-                self._one(query, "q"),
-            )})
-
-        if path.startswith("/api/decks/"):
-            rest = path[len("/api/decks/"):].strip("/")
-            parts = rest.split("/")
-            if not parts[0].isdigit():
-                return self._error(400, "Numero mazzo non valido")
-            deck_num = int(parts[0])
-            if len(parts) == 1:
-                return self._deck_detail(deck_num)
-            if len(parts) == 2 and parts[1] == "ydk":
-                return self._deck_ydk(deck_num)
-
         return self._error(404, "Endpoint non trovato: %s" % path)
 
     def _one(self, query, key, default=""):
         values = query.get(key) or []
         return values[0].strip() if values else default
 
-    def _many(self, query, key):
-        """Parametri ripetibili: ?format=A&format=B."""
-        out = []
-        for raw in query.get(key) or []:
-            out.extend(v.strip() for v in raw.split("|") if v.strip())
-        return out
-
-    def _random(self, query):
-        formats = self._many(query, "format")
-        archetypes = self._many(query, "archetype")
-        strats = self._many(query, "strategy")
-        text = self._one(query, "q")
-
-        pool = db.count_decks(formats, archetypes, strats, text)
-        deck_num = db.random_deck(formats, archetypes, strats, text)
-        if deck_num is None:
-            return self._json(
-                {"error": "Nessun mazzo corrisponde ai criteri scelti",
-                 "pool": 0}, 404)
-        # Stessa risposta del dettaglio, piu' la dimensione del sorteggio.
-        self._deck_detail(deck_num, extra={"pool": pool})
-
-    def _search(self, query):
-        result = db.search_decks(
-            q=self._one(query, "q"),
-            fmt=self._one(query, "format"),
-            archetype=self._one(query, "archetype"),
-            strategy=self._one(query, "strategy"),
-            card_id=self._one(query, "card_id") or None,
-            sort=self._one(query, "sort", "recent"),
-            page=int(self._one(query, "page", "1") or 1),
-            per_page=int(self._one(query, "per_page", "24") or 24),
-        )
-        return self._json(result)
-
-    def _deck_detail(self, deck_num, extra=None):
-        deck = db.get_deck(deck_num)
-        if not deck:
-            return self._error(404, "Mazzo non presente in archivio")
-
-        # Il side deck non arriva con la lista: lo recuperiamo alla prima
-        # apertura del mazzo e lo mettiamo in archivio.
-        if not deck["side_fetched"]:
-            try:
-                side = sources.fetch_side_deck(deck["pretty_url"])
-                db.save_side_deck(deck_num, side)
-                deck["side"] = side
-                deck["side_fetched"] = 1
-            except sources.SourceError as exc:
-                deck["side_warning"] = str(exc)
-
-        ids = set(deck["main"]) | set(deck["extra"]) | set(deck["side"])
-        if deck.get("cover_card"):
-            ids.add(deck["cover_card"])
-        cards = db.cards_by_ids(ids)
-
-        deck["main_cards"] = _expand(deck["main"], cards)
-        deck["extra_cards"] = _expand(deck["extra"], cards)
-        deck["side_cards"] = _expand(deck["side"], cards)
-        deck["missing_cards"] = sorted(i for i in ids if i not in cards)
-        deck["strategy_labels"] = [
-            strategies.LABELS.get(key, key) for key in deck.get("strategies") or []
-        ]
-        deck["ydk_preview"] = ydk.build(deck)
-        deck["ydk_filename"] = ydk.filename(deck)
-        if extra:
-            deck.update(extra)
-        return self._json(deck)
-
-    def _deck_ydk(self, deck_num):
-        deck = db.get_deck(deck_num)
-        if not deck:
-            return self._error(404, "Mazzo non presente in archivio")
-        if not deck["side_fetched"]:
-            try:
-                side = sources.fetch_side_deck(deck["pretty_url"])
-                db.save_side_deck(deck_num, side)
-                deck["side"] = side
-            except sources.SourceError:
-                pass  # meglio un .ydk senza side che nessun file
-
-        name = ydk.filename(deck)
-        ascii_name = name.encode("ascii", "ignore").decode("ascii") or "deck.ydk"
-        disposition = 'attachment; filename="%s"; filename*=UTF-8\'\'%s' % (
-            ascii_name,
-            urllib.parse.quote(name),
-        )
-        self._send(
-            200,
-            ydk.build(deck),
-            "application/octet-stream",
-            {"Content-Disposition": disposition, "Cache-Control": "no-store"},
-        )
-
     def _image(self, path, query):
-        """Proxy con cache su disco: evita le chiamate dirette dal browser."""
+        """Proxy con cache su disco: il mazzo si riapre anche senza rete."""
         raw_id = path[len("/api/img/"):].strip("/")
         if not raw_id.isdigit():
             return self._error(400, "Passcode non valido")
         small = self._one(query, "size", "small") != "full"
         template = sources.IMAGE_SMALL_URL if small else sources.IMAGE_URL
-        cache_name = "%s_%s.jpg" % (raw_id, "s" if small else "f")
-        cache_path = os.path.join(IMG_CACHE, cache_name)
+        cache_path = os.path.join(
+            IMG_CACHE, "%s_%s.jpg" % (raw_id, "s" if small else "f")
+        )
 
-        blob = None
         if os.path.exists(cache_path):
             with open(cache_path, "rb") as handle:
                 blob = handle.read()
         else:
-            req = urllib.request.Request(
-                template.format(id=raw_id),
-                headers={"User-Agent": sources.USER_AGENT},
-            )
-            try:
-                with urllib.request.urlopen(req, timeout=30) as resp:
-                    blob = resp.read()
-                os.makedirs(IMG_CACHE, exist_ok=True)
-                tmp = cache_path + ".part"
-                with open(tmp, "wb") as handle:
-                    handle.write(blob)
-                os.replace(tmp, cache_path)
-            except Exception:
+            blob = self._download_image(template.format(id=raw_id))
+            if blob is None:
                 return self._error(404, "Immagine non disponibile")
+            os.makedirs(IMG_CACHE, exist_ok=True)
+            tmp = cache_path + ".part"
+            with open(tmp, "wb") as handle:
+                handle.write(blob)
+            os.replace(tmp, cache_path)
 
         self._send(200, blob, "image/jpeg",
                    {"Cache-Control": "public, max-age=604800"})
+
+    def _download_image(self, url):
+        """Prova il sito, poi un proxy di immagini.
+
+        Diversi provider italiani bloccano i domini Yu-Gi-Oh a livello di
+        SNI: senza il secondo tentativo, su quelle reti le carte non si
+        vedrebbero mai. Quello che arriva finisce comunque in cache, cosi'
+        il giro lungo si fa una volta sola.
+        """
+        candidates = [
+            url,
+            "https://images.weserv.nl/?url="
+            + urllib.parse.quote(url.split("://", 1)[-1], safe=""),
+        ]
+        for candidate in candidates:
+            req = urllib.request.Request(
+                candidate, headers={"User-Agent": sources.USER_AGENT}
+            )
+            try:
+                with urllib.request.urlopen(req, timeout=30) as resp:
+                    return resp.read()
+            except Exception:
+                continue
+        return None
 
     def _start_update(self, body):
         if updater.is_running():
@@ -339,15 +187,31 @@ class Handler(BaseHTTPRequestHandler):
 
     # --------------------------------------------------------------- static
 
-    def _serve_static(self, path):
-        if path in ("/", ""):
-            path = "/index.html"
-        # Normalizzazione contro i path traversal.
+    def _resolve(self, path):
+        """I dati esportati stanno fuori da web/, ma si servono sotto /data/."""
         clean = posixpath.normpath(path).lstrip("/")
-        target = os.path.join(WEB_DIR, *clean.split("/"))
-        if not os.path.abspath(target).startswith(os.path.abspath(WEB_DIR)):
+        if clean in ("", "."):
+            clean = "index.html"
+        if clean == "data" or clean.startswith("data/"):
+            base, rest = EXPORT_DIR, clean[len("data"):].lstrip("/")
+        else:
+            base, rest = WEB_DIR, clean
+        target = os.path.join(base, *rest.split("/")) if rest else base
+        if not os.path.abspath(target).startswith(os.path.abspath(base)):
+            return None
+        return target
+
+    def _serve_static(self, path):
+        target = self._resolve(path)
+        if target is None:
             return self._error(403, "Accesso negato")
         if not os.path.isfile(target):
+            if path.startswith("/data/"):
+                return self._error(
+                    404,
+                    "Dati non ancora esportati: premi \"Aggiorna DB\" "
+                    "oppure esegui `python app.py --export`.",
+                )
             return self._error(404, "File non trovato: %s" % path)
 
         ctype = mimetypes.guess_type(target)[0] or "application/octet-stream"
@@ -362,5 +226,10 @@ class Handler(BaseHTTPRequestHandler):
 
 def serve(host="127.0.0.1", port=8777):
     db.init()
-    httpd = ThreadingHTTPServer((host, port), Handler)
-    return httpd
+    # Alla prima apertura i JSON possono non esistere ancora (archivio
+    # appena creato, o aggiornamento fatto da una versione precedente).
+    if db.stats()["decks"] and not os.path.exists(
+        os.path.join(EXPORT_DIR, "decks.json")
+    ):
+        export.export_all(EXPORT_DIR)
+    return ThreadingHTTPServer((host, port), Handler)

@@ -6,7 +6,7 @@ l'interfaccia interroga stato() per la barra di avanzamento.
 import threading
 import time
 
-from . import db, sources, strategies, tagforce
+from . import db, export, sources, strategies, tagforce
 
 _lock = threading.Lock()
 _state = {
@@ -48,7 +48,7 @@ def is_running():
 
 
 def start(pages_per_format=5, formats=None, with_cards=True,
-          with_tagforce=True):
+          with_tagforce=True, side_limit=300):
     """Avvia l'aggiornamento. Restituisce False se ne sta gia' girando uno."""
     with _lock:
         if _state["running"]:
@@ -69,7 +69,7 @@ def start(pages_per_format=5, formats=None, with_cards=True,
     thread = threading.Thread(
         target=_run,
         args=(int(pages_per_format), formats, bool(with_cards),
-              bool(with_tagforce)),
+              bool(with_tagforce), int(side_limit)),
         daemon=True,
     )
     thread.start()
@@ -128,7 +128,34 @@ def _ingest_tagforce(arch_map, name_index, tagger):
     return len(seen)
 
 
-def _run(pages_per_format, formats, with_cards, with_tagforce=True):
+def _fetch_missing_sides(limit):
+    """Il side deck sta solo nella pagina HTML del mazzo, una per mazzo.
+
+    Serve una richiesta a testa, quindi si procede a scaglioni: ogni
+    aggiornamento ne recupera un po', e in qualche giro l'archivio e'
+    completo. Il browser non potrebbe farlo da se': quella pagina non
+    manda intestazioni CORS.
+    """
+    pending = db.decks_without_side(limit)
+    if not pending:
+        return 0
+    _log("Recupero i side deck mancanti (%d di questo giro)..." % len(pending))
+    done = 0
+    for i, row in enumerate(pending, 1):
+        try:
+            side = sources.fetch_side_deck(row["pretty_url"])
+        except sources.SourceError:
+            side = []
+        db.save_side_deck(row["deck_num"], side)
+        done += 1
+        if i % 50 == 0:
+            _log("Side deck: %d/%d" % (i, len(pending)))
+    _log("Side deck recuperati: %d." % done)
+    return done
+
+
+def _run(pages_per_format, formats, with_cards, with_tagforce=True,
+         side_limit=300):
     try:
         formats = [f for f in (formats or sources.FORMATS) if f in sources.FORMATS]
         if not formats:
@@ -226,9 +253,23 @@ def _run(pages_per_format, formats, with_cards, with_tagforce=True):
         if retagged:
             _log("Funzionamento assegnato a %d mazzi gia' in archivio." % retagged)
 
+        if side_limit:
+            _set(phase="sides")
+            _fetch_missing_sides(side_limit)
+
         db.set_meta("last_deck_update", db.now_iso())
+
+        # I JSON sono l'unica fonte dati dell'interfaccia, in locale come
+        # sul sito: finche' non si riscrivono, l'aggiornamento non si vede.
+        _set(phase="export")
+        _log("Esporto i dati per l'interfaccia...")
+        result = export.export_all()
+        _log("Esportati %d mazzi e %d carte (%.1f MB)." % (
+            result["decks"], result["cards"], result["total_bytes"] / 1048576))
+
         _set(phase="done", finished_at=db.now_iso(), running=False)
-        _log("Aggiornamento completato: %d mazzi in archivio." % deck_total)
+        _log("Aggiornamento completato: %d mazzi in archivio."
+             % db.stats()["decks"])
 
     except sources.SourceError as exc:
         _set(phase="error", error=str(exc), running=False, finished_at=db.now_iso())

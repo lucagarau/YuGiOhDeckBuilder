@@ -9,6 +9,10 @@ Include i mazzi competitivi di YGOPRODeck **e** quelli dei personaggi di
 tutta la saga PSP *Tag Force* (1-6 e ARC-V Tag Force Special), piu' una
 modalita' casuale per farsi estrarre un mazzo a sorte.
 
+Esiste in due versioni che condividono lo stesso codice: **locale**, con
+l'eseguibile e il tasto per aggiornare l'archivio, e **sito statico** su
+GitHub Pages, che si aggiorna da solo due volte al giorno.
+
 Nessuna dipendenza da installare: l'eseguibile e' autosufficiente, e da
 sorgente bastano Python 3.8+ e la sua libreria standard.
 
@@ -34,10 +38,58 @@ python build_exe.py
 Opzioni utili:
 
 ```bash
-python app.py --port 9000      # porta diversa
-python app.py --no-browser     # non apre il browser
+python app.py --port 9000           # porta diversa
+python app.py --no-browser          # non apre il browser
 python app.py --update --pages 10   # aggiorna da riga di comando, poi esce
+python app.py --export              # riscrive solo i JSON dell'interfaccia
+python build_site.py                # assembla il sito statico in _site/
 ```
+
+## Le due versioni
+
+| | Locale (exe o `python app.py`) | Sito statico (GitHub Pages) |
+| --- | --- | --- |
+| Ricerca, filtri, random, `.ydk` | si' | si' |
+| Tasto "Aggiorna DB" | si' | no: automatico due volte al giorno |
+| Immagini carte | proxy locale con cache, funziona offline | direttamente dal CDN |
+
+### Come restano allineate
+
+Non ci sono due applicazioni da tenere sincronizzate a mano: **ricerca,
+filtri, sorteggio, dettaglio mazzo e generazione del `.ydk` esistono una
+volta sola**, in [`web/store.js`](web/store.js), e le usano entrambe.
+Aggiungere un filtro o cambiare il formato del `.ydk` si fa li' e vale
+subito per tutte e due.
+
+Quello che cambia e' solo cosa c'e' *intorno*:
+
+- **Python** fa cio' che un browser non puo' fare — scaricare da
+  YGOPRODeck, che non manda intestazioni CORS, leggere il wiki, dedurre
+  archetipi e funzionamento — e congela il risultato in
+  `data/export/*.json`.
+- **L'interfaccia** legge sempre e solo quei JSON, in locale come sul
+  sito.
+- Il server locale espone `/api/capabilities`; su GitHub Pages quella
+  chiamata fallisce, e l'interfaccia nasconde da sola i comandi di
+  aggiornamento e passa alle immagini remote. Nessun flag da impostare a
+  mano, nessuna build separata.
+
+## Pubblicare su GitHub Pages
+
+Una volta sola, nelle impostazioni del repository: **Settings → Pages →
+Source → GitHub Actions**.
+
+Poi `.github/workflows/pages.yml` fa il resto: gira alle 07:30 e 19:30
+(ora italiana), aggiorna l'archivio, esporta i JSON, assembla il sito e lo
+pubblica. Si puo' lanciare anche a mano da **Actions → Run workflow**,
+scegliendo quante pagine scaricare o chiedendo di ripubblicare senza
+riscaricare nulla.
+
+L'archivio vive nella cache della Action fra un giro e l'altro, cosi' si
+accumula invece di ripartire da zero; se la cache sparisce, il giro
+successivo lo ricostruisce per intero senza che nessuno debba
+intervenire. In git non finisce nulla di generato: ne' il database, ne' i
+JSON, ne' il sito.
 
 ## Come si usa
 
@@ -166,8 +218,13 @@ considera tutte.
   sia `14558127` che `14558128`). I mazzi usano anche quelli secondari, che
   la tabella `card_aliases` riconduce alla carta vera; il `.ydk` conserva
   comunque il passcode originale.
-- **Immagini.** Passano da `/api/img/<passcode>` con cache su disco in
-  `data/imgcache/`: dopo la prima visita il mazzo si apre anche senza rete.
+- **Immagini.** In locale passano da `/api/img/<passcode>` con cache su
+  disco in `data/imgcache/`, quindi dopo la prima visita il mazzo si apre
+  anche senza rete; sul sito statico arrivano direttamente dal CDN.
+  Diversi provider italiani bloccano quel dominio (vedi *Problemi noti*):
+  una sola immagine di prova al caricamento stabilisce se e' raggiungibile
+  e, se non lo e', tutte le carte passano da un proxy di immagini. Senza
+  quella prova ogni carta aspetterebbe il timeout della connessione.
 - **Aggiornamento.** Gira in un thread separato; l'interfaccia interroga
   `/api/update` per barra di avanzamento e log. Gli upsert sono idempotenti,
   quindi riaggiornare non duplica nulla.
@@ -179,37 +236,41 @@ YuGiOhDeckBuilder.exe   eseguibile (generato da build_exe.py)
 app.py                  avvio del server e CLI
 launcher.py             punto di ingresso dell'eseguibile
 build_exe.py            compilazione con PyInstaller
-ygodeck/
-  db.py                 schema SQLite, migrazioni, upsert, ricerca
+build_site.py           assembla il sito statico in _site/
+ygodeck/                tutto cio' che il browser non puo' fare
   sources.py            chiamate a YGOPRODeck e deduzione archetipi
   tagforce.py           mazzi della saga Tag Force dal wiki Fandom
   strategies.py         riconoscimento del funzionamento del mazzo
+  db.py                 schema SQLite, migrazioni, upsert
   updater.py            job di aggiornamento con avanzamento
-  server.py             routing HTTP, API JSON, proxy immagini
-  ydk.py                generazione del file .ydk
-web/                    interfaccia (HTML/CSS/JS, nessun framework)
-data/                   ygodeck.db e cache immagini (non versionati)
+  export.py             da SQLite ai JSON letti dall'interfaccia
+  server.py             file statici, aggiornamento, proxy immagini
+  ydk.py                .ydk da riga di comando (l'app usa store.js)
+web/                    l'applicazione, condivisa dalle due versioni
+  store.js              dati: ricerca, filtri, random, dettaglio, .ydk
+  app.js                interfaccia
+.github/workflows/      la Action che aggiorna e pubblica il sito
+data/                   database, JSON esportati, cache immagini
+                        (generati, non versionati)
 ```
 
 Node.js e' installato sulla macchina ma il progetto non lo usa: gira
 interamente sulla libreria standard di Python, quindi non c'e' niente da
 installare ne' da compilare per lo sviluppo.
 
-### API
+### API del server locale
+
+Sono rimaste solo quelle che servono davvero: tutto il resto e' passato a
+`store.js` ed e' comune alle due versioni.
 
 | Metodo | Percorso | Descrizione |
 | --- | --- | --- |
-| GET | `/api/status` | statistiche archivio e stato aggiornamento |
-| GET | `/api/decks` | ricerca: `q`, `format`, `archetype`, `strategy`, `card_id`, `sort`, `page`, `per_page` |
-| GET | `/api/decks/<n>` | mazzo completo con carte risolte e anteprima `.ydk` |
-| GET | `/api/decks/<n>/ydk` | scarica il `.ydk` |
-| GET | `/api/formats` | formati disponibili e presenti in archivio |
-| GET | `/api/archetypes` | archetipi in archivio e vocabolario completo |
-| GET | `/api/strategies` | funzionamenti in archivio con le relative etichette |
-| GET | `/api/decks/random` | un mazzo a caso; `format`, `archetype` e `strategy` sono ripetibili |
-| GET | `/api/decks/pool` | quanti mazzi rientrano negli stessi criteri |
-| GET | `/api/img/<passcode>` | immagine carta (`?size=full` per quella grande) |
-| POST | `/api/update` | avvia l'aggiornamento (`pages_per_format`, `formats`, `with_cards`) |
+| GET | `/api/capabilities` | dice all'interfaccia che c'e' un server locale |
+| GET | `/api/update` | stato e log dell'aggiornamento in corso |
+| POST | `/api/update` | lo avvia (`pages_per_format`, `formats`, `with_cards`, `with_tagforce`) |
+| GET | `/api/formats` | formati scaricabili, per il pannello di aggiornamento |
+| GET | `/api/img/<passcode>` | immagine carta con cache (`?size=full` per quella grande) |
+| GET | `/data/*.json` | l'archivio esportato, gli stessi file del sito statico |
 
 ## Problemi noti
 

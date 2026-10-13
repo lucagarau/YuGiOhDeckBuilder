@@ -1,5 +1,12 @@
 "use strict";
 
+/**
+ * Interfaccia. Non parla mai direttamente con la rete per i dati: tutto
+ * passa da Store (web/store.js), che e' lo stesso in locale e su GitHub
+ * Pages. L'unica cosa che cambia fra le due versioni e' la presenza del
+ * tasto "Aggiorna DB", che esiste solo quando c'e' un server locale.
+ */
+
 const $ = (sel) => document.querySelector(sel);
 
 const state = {
@@ -10,12 +17,8 @@ const state = {
   pollTimer: null,
   strategyLabels: {},
   randomArchetypes: [],
-  lastRandom: null,
+  lastRandom: false,
 };
-
-function imgUrl(id, size) {
-  return "/api/img/" + id + (size === "full" ? "?size=full" : "");
-}
 
 async function api(path, options) {
   const resp = await fetch(path, options);
@@ -36,112 +39,108 @@ function stripHtml(value) {
   return (el.textContent || "").trim();
 }
 
+const imgUrl = (id, size) => Store.imgUrl(id, size);
+
 // ------------------------------------------------------------- stato DB
 
-async function loadStatus() {
-  const data = await api("/api/status");
-  const s = data.stats;
+function showStats() {
+  const s = Store.stats();
   const when = s.last_deck_update
     ? new Date(s.last_deck_update).toLocaleString("it-IT")
     : "mai";
   $("#dbStats").textContent =
     `${s.decks.toLocaleString("it-IT")} mazzi · ${s.cards.toLocaleString("it-IT")} carte · ` +
     `${s.formats} formati · ${s.archetypes} archetipi · aggiornato: ${when}`;
-
-  if (data.update && data.update.running) startPolling();
-  return data;
 }
 
-async function loadFilters() {
-  const [formats, archetypes, strategies] = await Promise.all([
-    api("/api/formats"),
-    api("/api/archetypes"),
-    api("/api/strategies"),
-  ]);
-  state.strategyLabels = strategies.labels || {};
+/** Senza server locale non c'e' niente da aggiornare da qui. */
+function applyCapabilities() {
+  const canUpdate = Store.capabilities.update;
+  $("#btnUpdate").classList.toggle("hidden", !canUpdate);
+  $("#btnUpdateOpts").classList.toggle("hidden", !canUpdate);
+  $("#staticNote").classList.toggle("hidden", canUpdate);
+}
+
+function loadFilters() {
+  const formats = Store.formats();
+  const strategies = Store.strategies();
+  const archetypes = Store.archetypes();
+  state.strategyLabels = Store.meta.strategy_labels || {};
 
   const strat = $("#fStrategy");
-  const kept = strat.value;
+  const keptStrategy = strat.value;
   strat.innerHTML = '<option value="">Ogni funzionamento</option>';
-  for (const s of strategies.in_db) {
+  for (const s of strategies) {
     const opt = document.createElement("option");
     opt.value = s.key;
     opt.textContent = `${s.label} (${s.count})`;
     strat.appendChild(opt);
   }
-  strat.value = kept;
+  strat.value = keptStrategy;
 
   const sel = $("#fFormat");
+  const keptFormat = sel.value;
   sel.innerHTML = '<option value="">Tutti i formati</option>';
-  for (const f of formats.in_db) {
+  for (const f of formats) {
     const opt = document.createElement("option");
     opt.value = f.name;
     opt.textContent = `${f.name} (${f.count})`;
     sel.appendChild(opt);
   }
+  sel.value = keptFormat;
 
+  fillMulti($("#rndFormats"), formats.map((f) => [f.name, `${f.name} (${f.count})`]));
+  fillMulti($("#rndStrategies"), strategies.map((s) => [s.key, `${s.label} (${s.count})`]));
+
+  $("#archetypeList").innerHTML = archetypes
+    .map((a) => `<option value="${escapeHtml(a.name)}">${a.count} mazzi</option>`)
+    .join("");
+}
+
+/** Le caselle dei formati da scaricare: solo con il server locale. */
+async function fillUpdateFormats() {
   const boxes = $("#optFormats");
-  if (!boxes.dataset.filled) {
-    boxes.innerHTML = formats.available
+  if (boxes.dataset.filled || !Store.capabilities.update) return;
+  try {
+    const data = await api("api/formats");
+    boxes.innerHTML = data.available
       .map(
         (f) =>
           `<label class="check"><input type="checkbox" value="${escapeHtml(f)}"> ${escapeHtml(f)}</label>`
       )
       .join("");
     boxes.dataset.filled = "1";
+  } catch {
+    /* il pannello resta vuoto: si aggiorna comunque su tutti i formati */
   }
-
-  fillMulti($("#rndFormats"), formats.in_db.map((f) => [f.name, `${f.name} (${f.count})`]));
-  fillMulti(
-    $("#rndStrategies"),
-    strategies.in_db.map((s) => [s.key, `${s.label} (${s.count})`])
-  );
-
-  $("#archetypeList").innerHTML = archetypes.in_db
-    .map((a) => `<option value="${escapeHtml(a.name)}">${a.count} mazzi</option>`)
-    .join("");
 }
 
 // ------------------------------------------------------------- ricerca
 
-function currentQuery() {
-  const params = new URLSearchParams();
-  const q = $("#fQuery").value.trim();
-  const fmt = $("#fFormat").value;
-  const arch = $("#fArchetype").value.trim();
-  if (q) params.set("q", q);
-  if (fmt) params.set("format", fmt);
-  if (arch) params.set("archetype", arch);
-  const strategy = $("#fStrategy").value;
-  if (strategy) params.set("strategy", strategy);
-  params.set("sort", $("#fSort").value);
-  params.set("page", String(state.page));
-  params.set("per_page", String(state.perPage));
-  return params;
+function currentFilters() {
+  return {
+    q: $("#fQuery").value.trim(),
+    format: $("#fFormat").value,
+    archetype: $("#fArchetype").value.trim(),
+    strategy: $("#fStrategy").value,
+    sort: $("#fSort").value,
+    page: state.page,
+    perPage: state.perPage,
+  };
 }
 
-async function search() {
+function search() {
   const grid = $("#deckGrid");
-  grid.setAttribute("aria-busy", "true");
-  let data;
-  try {
-    data = await api("/api/decks?" + currentQuery().toString());
-  } catch (err) {
-    $("#emptyState").textContent = "Errore: " + err.message;
-    $("#emptyState").classList.remove("hidden");
-    grid.innerHTML = "";
-    return;
-  }
-  grid.removeAttribute("aria-busy");
+  const data = Store.search(currentFilters());
 
   state.total = data.total;
-  const pages = Math.max(1, Math.ceil(data.total / data.per_page));
+  state.page = data.page;
   $("#resultCount").textContent = data.total
     ? `${data.total.toLocaleString("it-IT")} mazzi trovati`
     : "";
-  $("#pageLabel").textContent = `${data.page} / ${pages}`;
+  $("#pageLabel").textContent = `${data.page} / ${data.pages}`;
   $("#btnPrev").disabled = data.page <= 1;
-  $("#btnNext").disabled = data.page >= pages;
+  $("#btnNext").disabled = data.page >= data.pages;
 
   grid.innerHTML = data.items.map(deckCard).join("");
   grid.querySelectorAll(".deck-card").forEach((el) => {
@@ -150,10 +149,9 @@ async function search() {
 
   const empty = $("#emptyState");
   if (!data.total) {
-    empty.textContent =
-      state.total === 0 && !currentQuery().get("q")
-        ? 'Archivio vuoto o nessun risultato. Premi "Aggiorna DB" per scaricare i mazzi da internet.'
-        : "Nessun mazzo corrisponde ai filtri.";
+    empty.textContent = Store.stats().decks
+      ? "Nessun mazzo corrisponde ai filtri."
+      : "Archivio vuoto.";
     empty.classList.remove("hidden");
   } else {
     empty.classList.add("hidden");
@@ -162,7 +160,8 @@ async function search() {
 
 function deckCard(d) {
   const cover = d.cover_card
-    ? `<img loading="lazy" src="${imgUrl(d.cover_card)}" alt="">`
+    ? `<img loading="lazy" src="${imgUrl(d.cover_card)}" alt="" data-card-id="${d.cover_card}"
+         onerror="Store.imgFallback(this)">`
     : '<span class="noimg">nessuna immagine</span>';
   const tags = [];
   if (d.format) tags.push(`<span class="tag fmt">${escapeHtml(d.format)}</span>`);
@@ -190,7 +189,6 @@ function deckCard(d) {
     </div>
   </article>`;
 }
-
 
 // ------------------------------------------------------------- random
 
@@ -228,59 +226,38 @@ function renderChips() {
     );
 }
 
-function randomParams() {
-  const params = new URLSearchParams();
-  for (const f of multiValues($("#rndFormats"))) params.append("format", f);
-  for (const s of multiValues($("#rndStrategies"))) params.append("strategy", s);
-  for (const a of state.randomArchetypes) params.append("archetype", a);
-  return params;
+function randomFilters() {
+  return {
+    format: multiValues($("#rndFormats")),
+    strategy: multiValues($("#rndStrategies")),
+    archetype: state.randomArchetypes,
+  };
 }
 
-async function updatePool() {
-  const params = randomParams();
-  params.set("count_only", "1");
-  try {
-    const data = await api("/api/decks/pool?" + params.toString());
-    $("#rndPool").textContent = data.pool
-      ? `${data.pool.toLocaleString("it-IT")} mazzi fra cui pescare`
-      : "Nessun mazzo con questi criteri";
-    $("#btnDraw").disabled = !data.pool;
-  } catch {
-    $("#rndPool").textContent = "";
-  }
+function updatePool() {
+  const pool = Store.count(randomFilters());
+  $("#rndPool").textContent = pool
+    ? `${pool.toLocaleString("it-IT")} mazzi fra cui pescare`
+    : "Nessun mazzo con questi criteri";
+  $("#btnDraw").disabled = !pool;
 }
 
-async function drawRandom() {
-  const btn = $("#btnDraw");
-  btn.disabled = true;
-  try {
-    const deck = await api("/api/decks/random?" + randomParams().toString());
-    state.lastRandom = true;
-    showDeck(deck);
-  } catch (err) {
-    $("#rndPool").textContent = err.message;
-  } finally {
-    btn.disabled = false;
+function drawRandom() {
+  const picked = Store.random(randomFilters());
+  if (!picked) {
+    $("#rndPool").textContent = "Nessun mazzo corrisponde ai criteri scelti";
+    return;
   }
+  state.lastRandom = true;
+  showDeck(Store.deck(picked.deck_num));
 }
 
 // ------------------------------------------------------------- dettaglio
 
-async function openDeck(deckNum) {
-  const overlay = $("#overlay");
-  overlay.classList.remove("hidden");
-  $("#deckTitle").textContent = "Caricamento...";
-  $("#deckMeta").textContent = "";
-  $("#deckBody").innerHTML = "";
-
+function openDeck(deckNum) {
   state.lastRandom = false;
-  let deck;
-  try {
-    deck = await api("/api/decks/" + deckNum);
-  } catch (err) {
-    $("#deckBody").innerHTML = `<p class="warn">Errore: ${escapeHtml(err.message)}</p>`;
-    return;
-  }
+  const deck = Store.deck(deckNum);
+  if (!deck) return;
   showDeck(deck);
 }
 
@@ -311,16 +288,11 @@ function showDeck(deck) {
   }
 
   const parts = [];
-  if (deck.side_warning)
-    parts.push(
-      `<p class="warn">Side deck non recuperato: ${escapeHtml(deck.side_warning)}</p>`
-    );
   if (deck.missing_cards && deck.missing_cards.length)
     parts.push(
       `<p class="warn">${deck.missing_cards.length} carte non sono nel database locale ` +
-        `(il .ydk resta corretto, usa i passcode). Aggiorna il DB per i nomi.</p>`
+        `(il .ydk resta corretto, usa i passcode).</p>`
     );
-
   if (deck.unresolved && deck.unresolved.length)
     parts.push(
       `<p class="warn">${deck.unresolved.length} carte di questo mazzo non esistono ` +
@@ -329,7 +301,7 @@ function showDeck(deck) {
         `${deck.unresolved.length > 8 ? "..." : ""}</p>`
     );
 
-  const desc = stripHtml(deck.description) || stripHtml(deck.excerpt);
+  const desc = stripHtml(deck.excerpt);
   if (desc) parts.push(`<p class="deck-desc">${escapeHtml(desc.slice(0, 600))}</p>`);
 
   parts.push(zoneHtml("Main Deck", deck.main_cards, deck.main.length));
@@ -355,7 +327,8 @@ function zoneHtml(title, entries, total) {
     <div class="card-tile" title="${escapeHtml(e.name)}${
         e.descr ? "\n\n" + escapeHtml(e.descr.slice(0, 300)) : ""
       }">
-      <img loading="lazy" src="${imgUrl(e.id)}" alt="${escapeHtml(e.name)}">
+      <img loading="lazy" src="${imgUrl(e.id)}" alt="${escapeHtml(e.name)}"
+           data-card-id="${e.id}" onerror="Store.imgFallback(this)">
       <span class="qty">x${e.qty}</span>
       <div class="cname">${escapeHtml(e.name)}</div>
     </div>`
@@ -378,8 +351,7 @@ function closeDeck() {
 }
 
 function downloadYdk() {
-  if (!state.deck) return;
-  window.location.href = "/api/decks/" + state.deck.deck_num + "/ydk";
+  if (state.deck) Store.downloadYdk(state.deck);
 }
 
 function previewYdk() {
@@ -388,7 +360,7 @@ function previewYdk() {
     `<div class="zone"><div class="zone-head"><h3>${escapeHtml(
       state.deck.ydk_filename
     )}</h3><span class="muted">anteprima del file</span></div>` +
-    `<pre class="ydk-text">${escapeHtml(state.deck.ydk_preview)}</pre></div>`;
+    `<pre class="ydk-text">${escapeHtml(state.deck.ydk)}</pre></div>`;
 }
 
 // ------------------------------------------------------------- update DB
@@ -407,7 +379,7 @@ async function startUpdate() {
   $("#btnUpdate").disabled = true;
   $("#progress").classList.remove("hidden");
   try {
-    await api("/api/update", {
+    await api("api/update", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
@@ -428,19 +400,30 @@ function startPolling() {
   pollUpdate();
 }
 
+const PHASES = {
+  cards: "Scarico le carte",
+  decks: "Scarico i mazzi",
+  tagforce: "Importo i mazzi Tag Force",
+  sides: "Recupero i side deck",
+  strategies: "Riconosco il funzionamento",
+  export: "Preparo i dati",
+  done: "Completato",
+  error: "Errore",
+  starting: "Avvio",
+  idle: "In attesa",
+};
+
 async function pollUpdate() {
   let u;
   try {
-    u = await api("/api/update");
+    u = await api("api/update");
   } catch {
     return;
   }
 
   const pct = u.total ? Math.round((u.done / u.total) * 100) : 0;
   $("#progressBar").style.width = pct + "%";
-  $("#progressPhase").textContent =
-    { cards: "Scarico le carte", decks: "Scarico i mazzi", done: "Completato",
-      error: "Errore", starting: "Avvio", idle: "In attesa" }[u.phase] || u.phase;
+  $("#progressPhase").textContent = PHASES[u.phase] || u.phase;
   $("#progressCount").textContent = u.total
     ? `${u.done}/${u.total} · ${u.decks_saved} mazzi · ${pct}%`
     : "";
@@ -454,9 +437,11 @@ async function pollUpdate() {
     state.pollTimer = null;
     $("#btnUpdate").disabled = false;
     $("#progressBar").style.width = u.error ? pct + "%" : "100%";
-    await loadStatus();
-    await loadFilters();
-    await search();
+    // L'aggiornamento ha riscritto i JSON: ricaricali.
+    await Store.load();
+    showStats();
+    loadFilters();
+    search();
     if (!u.error) setTimeout(() => $("#progress").classList.add("hidden"), 4000);
   }
 }
@@ -469,29 +454,24 @@ function debouncedSearch() {
   searchTimer = setTimeout(() => {
     state.page = 1;
     search();
-  }, 280);
+  }, 200);
 }
 
 function init() {
   $("#btnUpdate").addEventListener("click", startUpdate);
-  $("#btnUpdateOpts").addEventListener("click", () =>
-    $("#updatePanel").classList.toggle("hidden")
-  );
+  $("#btnUpdateOpts").addEventListener("click", () => {
+    $("#updatePanel").classList.toggle("hidden");
+    fillUpdateFormats();
+  });
 
   $("#fQuery").addEventListener("input", debouncedSearch);
   $("#fArchetype").addEventListener("input", debouncedSearch);
-  $("#fFormat").addEventListener("change", () => {
-    state.page = 1;
-    search();
-  });
-  $("#fStrategy").addEventListener("change", () => {
-    state.page = 1;
-    search();
-  });
-  $("#fSort").addEventListener("change", () => {
-    state.page = 1;
-    search();
-  });
+  for (const id of ["#fFormat", "#fStrategy", "#fSort"]) {
+    $(id).addEventListener("change", () => {
+      state.page = 1;
+      search();
+    });
+  }
   $("#btnReset").addEventListener("click", () => {
     $("#fQuery").value = "";
     $("#fFormat").value = "";
@@ -554,9 +534,23 @@ function init() {
       closeDeck();
   });
 
-  loadStatus().then(loadFilters).then(search).catch((err) => {
-    $("#dbStats").textContent = "Errore: " + err.message;
-  });
+  Store.load()
+    .then(() => {
+      applyCapabilities();
+      showStats();
+      loadFilters();
+      search();
+      if (Store.capabilities.update) {
+        api("api/update").then((u) => u.running && startPolling()).catch(() => {});
+      }
+    })
+    .catch((err) => {
+      $("#dbStats").textContent = "Errore nel caricamento dei dati: " + err.message;
+      $("#emptyState").textContent =
+        "Non riesco a leggere data/decks.json. In locale premi \"Aggiorna DB\"; " +
+        "sul sito significa che la pubblicazione non e' ancora andata a buon fine.";
+      $("#emptyState").classList.remove("hidden");
+    });
 }
 
 init();

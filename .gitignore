@@ -13,10 +13,13 @@ pip-log.txt
 .mypy_cache/
 .ruff_cache/
 
-# ---- Archivio locale ----
-# Database dei mazzi e cache immagini: si rigenerano con "Aggiorna DB",
-# pesano decine di MB e sono diversi per ogni installazione.
+# ---- Archivio locale e sito generato ----
+# Database, JSON esportati e cache immagini: si rigenerano con
+# "Aggiorna DB", pesano decine di MB e sono diversi per ogni
+# installazione. Su GitHub Pages li ricostruisce la Action a ogni giro,
+# quindi non vanno versionati.
 data/
+_site/
 *.db
 *.db-wal
 *.db-shm
