@@ -1,0 +1,62 @@
+name: Pubblica l'eseguibile
+
+# Crea un rilascio con YuGiOhDeckBuilder.exe allegato, cosi' il link in
+# fondo al README porta davvero a un file scaricabile.
+#
+#     git tag v1.0 && git push origin v1.0
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Nome del rilascio (es. v1.0)"
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    # L'eseguibile e' per Windows, quindi va compilato su Windows.
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Installa PyInstaller
+        run: python -m pip install --quiet pyinstaller
+
+      - name: Compila l'eseguibile
+        run: python build_exe.py
+
+      - name: Prepara il testo del rilascio
+        shell: bash
+        run: |
+          cat > notes.md <<'EOF'
+          Scarica **YuGiOhDeckBuilder.exe** qui sotto, mettilo in una cartella
+          sua e fai doppio clic: si apre da solo nel browser.
+
+          Al primo avvio l'archivio e' vuoto, premi **Aggiorna DB** e aspetta
+          un paio di minuti.
+
+          Preferisci non scaricare niente? Il sito fa le stesse cose:
+          https://lucagarau.github.io/YuGiOhDeckBuilder/
+
+          Windows avvisa che il file non e' firmato: scegli *Ulteriori
+          informazioni* e poi *Esegui comunque*.
+          EOF
+
+      - name: Pubblica il rilascio
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag || github.ref_name }}
+        shell: bash
+        run: |
+          gh release create "$TAG" YuGiOhDeckBuilder.exe \
+            --title "Yu-Gi-Oh Deck Builder $TAG" \
+            --notes-file notes.md
