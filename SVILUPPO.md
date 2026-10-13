@@ -120,6 +120,17 @@ JSON, ne' il sito.
   richiesta, non al caricamento. L'indice passa dai passcode canonici:
   nei mazzi ci sono 67 artwork alternativi usati 921 volte, e senza
   ricondurli alla carta vera i conteggi sarebbero sbagliati.
+- **Editor dei mazzi.** Vive interamente nel browser, perche' il sito e'
+  statico: i mazzi salvati stanno in `localStorage` (ogni accesso e'
+  protetto da try/catch, in navigazione privata puo' lanciare, e in quel
+  caso il tasto Salva viene disabilitato spiegando il perche'). La zona
+  di una carta si decide dal `frame_type`: la regola
+  `/fusion|synchro|xyz|link/` e' stata ricavata contando dove finiscono
+  davvero le carte nei 4.561 mazzi dell'archivio, Rituali e Pendulum
+  compresi. `tidyDeck` rimette a posto i `.ydk` importati che hanno
+  mostri dell'Extra nel Main, e dice quante carte ha spostato. Il limite
+  delle tre copie vale su tutto il mazzo e conta i passcode canonici,
+  quindi tre artwork diversi della stessa carta contano tre.
 - **Artwork alternativi.** Una carta puo' avere piu' passcode (Ash Blossom e'
   sia `14558127` che `14558128`). I mazzi usano anche quelli secondari, che
   la tabella `card_aliases` riconduce alla carta vera; il `.ydk` conserva
@@ -163,6 +174,20 @@ data/                   database, JSON esportati, cache immagini
 Node.js e' installato sulla macchina ma il progetto non lo usa: gira
 interamente sulla libreria standard di Python, quindi non c'e' niente da
 installare ne' da compilare per lo sviluppo.
+
+### Test
+
+```bash
+python app.py --export        # serve l'archivio esportato
+node tests/store.test.js
+```
+
+Coprono `web/store.js`, cioe' le regole che le due versioni condividono:
+zone delle carte, lettura e scrittura del `.ydk`, validazione del mazzo,
+limite delle tre copie sui passcode canonici, salvataggio locale e
+conteggio dei mazzi per carta. Caricano lo store vero tramite il gancio
+`__inject`, non una copia della sua logica. Girano anche nella Action
+prima della pubblicazione.
 
 ### API del server locale
 

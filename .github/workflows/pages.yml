@@ -76,6 +76,11 @@ jobs:
             data/ygodeck.db-wal
           key: ygodeck-db-${{ github.run_id }}
 
+      # La logica condivisa dalle due versioni e' tutta in store.js: se si
+      # rompe, meglio accorgersene qui che sul sito pubblicato.
+      - name: Esegui i test
+        run: node tests/store.test.js
+
       - name: Costruisci il sito
         run: python build_site.py _site
 

@@ -476,6 +476,199 @@ const Store = (() => {
     };
   }
 
+
+  // ----------------------------------------------------- costruzione mazzi
+
+  // Verificato sui mazzi reali: nell'Extra finiscono solo queste famiglie,
+  // varianti Pendulum comprese. I Rituali restano nel Main.
+  const EXTRA_FRAMES = /fusion|synchro|xyz|link/;
+
+  const DECK_LIMITS = {
+    main: { min: 40, max: 60 },
+    extra: { min: 0, max: 15 },
+    side: { min: 0, max: 15 },
+  };
+  const MAX_COPIES = 3;
+
+  function cardZone(c) {
+    return c && EXTRA_FRAMES.test((c.frame_type || "").toLowerCase())
+      ? "extra"
+      : "main";
+  }
+
+  /** La zona giusta per questo passcode, risolvendo gli artwork alternativi. */
+  function zoneFor(id) {
+    return cardZone(card(id));
+  }
+
+  /**
+   * Controlla un mazzo secondo le regole ufficiali: dimensioni delle zone
+   * e massimo tre copie **in tutto il mazzo**, non per zona.
+   */
+  function validateDeck(deck) {
+    const errors = [];
+    const counts = {
+      main: (deck.main || []).length,
+      extra: (deck.extra || []).length,
+      side: (deck.side || []).length,
+    };
+
+    for (const zone of ["main", "extra", "side"]) {
+      const { min, max } = DECK_LIMITS[zone];
+      const label = { main: "Main Deck", extra: "Extra Deck", side: "Side Deck" }[zone];
+      if (counts[zone] > max) {
+        errors.push(`${label}: ${counts[zone]} carte, il massimo e' ${max}.`);
+      } else if (counts[zone] < min) {
+        errors.push(`${label}: ${counts[zone]} carte, il minimo e' ${min}.`);
+      }
+    }
+
+    const copies = new Map();
+    for (const zone of ["main", "extra", "side"]) {
+      for (const id of deck[zone] || []) {
+        const key = canonical(id);
+        copies.set(key, (copies.get(key) || 0) + 1);
+      }
+    }
+    for (const [id, n] of copies) {
+      if (n > MAX_COPIES) {
+        const c = card(id);
+        errors.push(`${(c && c.name) || id}: ${n} copie, il massimo e' ${MAX_COPIES}.`);
+      }
+    }
+
+    // Una carta nella zona sbagliata rende il mazzo non caricabile.
+    for (const id of deck.extra || []) {
+      if (zoneFor(id) !== "extra") {
+        const c = card(id);
+        errors.push(`${(c && c.name) || id} non va nell'Extra Deck.`);
+      }
+    }
+    for (const id of deck.main || []) {
+      if (zoneFor(id) === "extra") {
+        const c = card(id);
+        errors.push(`${(c && c.name) || id} va nell'Extra Deck.`);
+      }
+    }
+
+    return { ok: errors.length === 0, errors, counts };
+  }
+
+  /** Quante copie di una carta ci sono gia' in tutto il mazzo. */
+  function copiesOf(deck, id) {
+    const key = canonical(id);
+    let n = 0;
+    for (const zone of ["main", "extra", "side"]) {
+      for (const other of deck[zone] || []) if (canonical(other) === key) n += 1;
+    }
+    return n;
+  }
+
+  // ------------------------------------------------------------ file .ydk
+
+  /** Legge un .ydk. Tollerante: righe sconosciute ignorate. */
+  function parseYdk(text) {
+    const deck = { name: "", author: "", main: [], extra: [], side: [] };
+    let zone = "main";
+    let seenMarker = false;
+
+    for (const raw of String(text).split(/\r?\n/)) {
+      const line = raw.trim();
+      if (!line) continue;
+
+      const lower = line.toLowerCase();
+      if (lower === "#main") { zone = "main"; seenMarker = true; continue; }
+      if (lower === "#extra") { zone = "extra"; seenMarker = true; continue; }
+      if (lower === "!side" || lower === "#side") { zone = "side"; seenMarker = true; continue; }
+
+      if (line.startsWith("#") || line.startsWith("!")) {
+        const comment = line.slice(1).trim();
+        if (/^created by\s+/i.test(comment)) {
+          deck.author = comment.replace(/^created by\s+/i, "").trim();
+        } else if (!seenMarker && !deck.name) {
+          deck.name = comment;
+        }
+        continue;
+      }
+
+      if (/^\d+$/.test(line)) deck[zone].push(Number(line));
+    }
+    return deck;
+  }
+
+  /**
+   * Rimette ogni carta nella sua zona. I .ydk scritti a mano o da altri
+   * programmi a volte hanno mostri dell'Extra nel Main.
+   */
+  function tidyDeck(deck) {
+    const out = { main: [], extra: [], side: [...(deck.side || [])] };
+    const moved = [];
+    for (const zone of ["main", "extra"]) {
+      for (const id of deck[zone] || []) {
+        const target = zoneFor(id);
+        out[target].push(id);
+        if (target !== zone) moved.push(id);
+      }
+    }
+    return { deck: out, moved };
+  }
+
+  // ------------------------------------------------- mazzi salvati in locale
+
+  const STORAGE_KEY = "ygodeck.mydecks";
+
+  function readStorage() {
+    // In navigazione privata o con i dati del sito bloccati puo' lanciare.
+    try {
+      return JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
+    } catch {
+      return [];
+    }
+  }
+
+  function writeStorage(list) {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(list));
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  function savedDecks() {
+    return readStorage().sort((a, b) => (b.saved_at || "").localeCompare(a.saved_at || ""));
+  }
+
+  function saveDeck(deck) {
+    const list = readStorage();
+    const entry = {
+      id: deck.id || "d" + Date.now().toString(36),
+      name: deck.name || "Mazzo senza nome",
+      main: [...(deck.main || [])],
+      extra: [...(deck.extra || [])],
+      side: [...(deck.side || [])],
+      saved_at: new Date().toISOString(),
+    };
+    const at = list.findIndex((d) => d.id === entry.id);
+    if (at >= 0) list[at] = entry;
+    else list.push(entry);
+    return writeStorage(list) ? entry : null;
+  }
+
+  function deleteSavedDeck(id) {
+    return writeStorage(readStorage().filter((d) => d.id !== id));
+  }
+
+  function storageWorks() {
+    try {
+      localStorage.setItem(STORAGE_KEY + ".test", "1");
+      localStorage.removeItem(STORAGE_KEY + ".test");
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   function stats() {
     return {
       decks: decks.length,
@@ -492,6 +685,28 @@ const Store = (() => {
     load, stats, search, count, random, deck, card, expand, imgUrl, imgFallback,
     formats, archetypes, strategies, buildYdk, ydkFilename, downloadYdk,
     searchCards, cardFacets, cardDeckCount, decksWithCard,
+    cardZone, zoneFor, validateDeck, copiesOf, parseYdk, tidyDeck,
+    savedDecks, saveDeck, deleteSavedDeck, storageWorks,
+    get limits() { return DECK_LIMITS; },
+    // Riempie lo store senza passare dalla rete: lo usa
+    // tests/store.test.js, che gira anche nella GitHub Action.
+    __inject(cardList, deckList, metaData) {
+      cardsById = new Map(cardList.map((c) => [c.id, c]));
+      decks = deckList;
+      byNum = new Map(decks.map((d) => [d.deck_num, d]));
+      meta = metaData;
+      aliases = new Map(
+        Object.entries(metaData.aliases || {}).map(([a, c]) => [Number(a), c])
+      );
+      for (const d of decks) {
+        d._search = `${d.name || ""} ${d.author || ""} ${d.excerpt || ""}`.toLowerCase();
+        d._format = (d.format || "").toLowerCase();
+        d._archetypes = new Set(d.archetypes || []);
+        d._strategies = new Set(d.strategies || []);
+      }
+      deckIndex = null;
+      cardList = null;
+    },
     get capabilities() { return caps; },
     get meta() { return meta; },
   };

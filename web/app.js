@@ -22,6 +22,10 @@ const state = {
   cardPage: 1,
   cardsReady: false,
   cardFilter: null,
+  editing: null,
+  editorReady: false,
+  pickerPage: 1,
+  movedNote: "",
 };
 
 async function api(path, options) {
@@ -362,25 +366,227 @@ function zoneHtml(title, entries, total) {
 
 
 
+
+// ------------------------------------------------------------- editor
+
+const EMPTY_DECK = () => ({ id: null, name: "", main: [], extra: [], side: [] });
+
+function editorInit() {
+  if (state.editorReady) return;
+  const facets = Store.cardFacets();
+  const sel = $("#pAttribute");
+  sel.innerHTML = '<option value="">Ogni attributo</option>';
+  for (const a of facets.attributes) {
+    const opt = document.createElement("option");
+    opt.value = a;
+    opt.textContent = a;
+    sel.appendChild(opt);
+  }
+  if (!Store.storageWorks()) {
+    $("#edSave").disabled = true;
+    $("#edSave").title =
+      "Il browser non permette di salvare in locale (navigazione privata?). " +
+      "Puoi comunque scaricare il .ydk.";
+  }
+  state.editorReady = true;
+}
+
+/** Carica un mazzo nell'editor, sistemando le carte fuori posto. */
+function editorLoad(deck, { keepId = false } = {}) {
+  const { deck: tidy, moved } = Store.tidyDeck(deck);
+  state.editing = {
+    id: keepId ? deck.id || null : null,
+    name: deck.name || "",
+    main: tidy.main,
+    extra: tidy.extra,
+    side: tidy.side,
+  };
+  $("#edName").value = state.editing.name;
+  state.movedNote = moved.length
+    ? `${moved.length} cart${moved.length > 1 ? "e sono state spostate" : "a e' stata spostata"} nella zona corretta.`
+    : "";
+  editorRender();
+}
+
+function editorRender() {
+  const deck = state.editing;
+  const check = Store.validateDeck(deck);
+
+  $("#edCounts").innerHTML = ["main", "extra", "side"]
+    .map((zone) => {
+      const limit = Store.limits[zone];
+      const n = check.counts[zone];
+      const bad = n > limit.max || n < limit.min;
+      const label = { main: "Main", extra: "Extra", side: "Side" }[zone];
+      return `<span class="count-pill${bad ? " bad" : " good"}">${label} ${n}<small>/${limit.max}</small></span>`;
+    })
+    .join("");
+
+  const problems = [...check.errors];
+  if (state.movedNote) problems.unshift(state.movedNote);
+  const box = $("#edErrors");
+  box.classList.toggle("hidden", !problems.length);
+  box.innerHTML = problems.map((e) => `<div>${escapeHtml(e)}</div>`).join("");
+
+  for (const zone of ["main", "extra", "side"]) {
+    const grid = document.querySelector(`[data-grid="${zone}"]`);
+    const entries = Store.expand(deck[zone]);
+    grid.innerHTML = entries.map((e) => editorTile(e, zone)).join("");
+    document.querySelector(`[data-count="${zone}"]`).textContent =
+      `${deck[zone].length} carte`;
+  }
+  $("#edDownload").disabled = !deck.main.length;
+}
+
+function editorTile(e, zone) {
+  return `
+  <div class="card-tile" data-id="${e.id}" data-zone="${zone}" role="button" tabindex="0"
+       title="${escapeHtml(e.name)} - clicca per togliere una copia">
+    <img loading="lazy" src="${imgUrl(e.id)}" alt="${escapeHtml(e.name)}"
+         data-card-id="${e.id}" onerror="Store.imgFallback(this)">
+    <span class="qty">x${e.qty}</span>
+    <div class="cname">${escapeHtml(e.name)}</div>
+  </div>`;
+}
+
+function editorAdd(id, toSide) {
+  const deck = state.editing;
+  const zone = toSide ? "side" : Store.zoneFor(id);
+  if (Store.copiesOf(deck, id) >= 3) {
+    return editorFlash("Hai gia' tre copie di questa carta.");
+  }
+  if (deck[zone].length >= Store.limits[zone].max) {
+    const label = { main: "Il Main", extra: "L'Extra", side: "Il Side" }[zone];
+    return editorFlash(`${label} Deck e' al massimo.`);
+  }
+  deck[zone].push(id);
+  state.movedNote = "";
+  editorRender();
+}
+
+function editorRemove(id, zone) {
+  const list = state.editing[zone];
+  const at = list.lastIndexOf(id);
+  if (at >= 0) list.splice(at, 1);
+  state.movedNote = "";
+  editorRender();
+}
+
+let flashTimer = null;
+function editorFlash(message) {
+  const box = $("#edErrors");
+  box.classList.remove("hidden");
+  box.innerHTML = `<div class="flash">${escapeHtml(message)}</div>`;
+  clearTimeout(flashTimer);
+  flashTimer = setTimeout(editorRender, 2200);
+}
+
+// ---------------------------------------------------- scelta delle carte
+
+function pickerFilters() {
+  return {
+    q: $("#pQuery").value.trim(),
+    group: $("#pGroup").value,
+    attribute: $("#pAttribute").value,
+    archetype: $("#pArchetype").value.trim(),
+    sort: "decks",
+    page: state.pickerPage,
+    perPage: 24,
+  };
+}
+
+function pickerRender() {
+  const data = Store.searchCards(pickerFilters());
+  state.pickerPage = data.page;
+  $("#pPageLabel").textContent = `${data.page} / ${data.pages}`;
+  $("#pPrev").disabled = data.page <= 1;
+  $("#pNext").disabled = data.page >= data.pages;
+
+  $("#pickerGrid").innerHTML = data.items
+    .map((c) => {
+      const have = Store.copiesOf(state.editing, c.id);
+      return `
+      <div class="picker-tile${have ? " has" : ""}" data-id="${c.id}"
+           title="${escapeHtml(c.name)}">
+        <img loading="lazy" src="${imgUrl(c.id)}" alt="${escapeHtml(c.name)}"
+             data-card-id="${c.id}" onerror="Store.imgFallback(this)">
+        ${have ? `<span class="qty">x${have}</span>` : ""}
+        <button class="to-side" data-side="${c.id}" title="Aggiungi al Side Deck">S</button>
+        <div class="cname">${escapeHtml(c.name)}</div>
+      </div>`;
+    })
+    .join("");
+}
+
+function renderSavedDecks() {
+  const list = Store.savedDecks();
+  const box = $("#edMineList");
+  if (!list.length) {
+    box.innerHTML = '<p class="hint">Nessun mazzo salvato. Premi "Salva" per tenerne uno.</p>';
+    return;
+  }
+  box.innerHTML = list
+    .map(
+      (d) => `
+      <div class="saved-item">
+        <button class="saved-open" data-id="${d.id}">
+          <strong>${escapeHtml(d.name)}</strong>
+          <span class="muted">Main ${d.main.length} - Extra ${d.extra.length} - Side ${d.side.length}</span>
+        </button>
+        <button class="saved-del btn btn-ghost" data-del="${d.id}" title="Elimina">&times;</button>
+      </div>`
+    )
+    .join("");
+  box.querySelectorAll(".saved-open").forEach((b) =>
+    b.addEventListener("click", () => {
+      const deck = Store.savedDecks().find((d) => d.id === b.dataset.id);
+      if (deck) {
+        editorLoad(deck, { keepId: true });
+        $("#edMinePanel").classList.add("hidden");
+      }
+    })
+  );
+  box.querySelectorAll(".saved-del").forEach((b) =>
+    b.addEventListener("click", () => {
+      if (!confirm("Eliminare questo mazzo salvato?")) return;
+      Store.deleteSavedDeck(b.dataset.del);
+      if (state.editing && state.editing.id === b.dataset.del) state.editing.id = null;
+      renderSavedDecks();
+    })
+  );
+}
+
 // --------------------------------------------------------- vista carte
 
+const VIEWS = { decks: "#viewDecks", cards: "#viewCards", editor: "#viewEditor" };
+const TABS = { decks: "#tabDecks", cards: "#tabCards", editor: "#tabEditor" };
+
 function showView(name) {
-  const cards = name === "cards";
-  $("#viewDecks").classList.toggle("hidden", cards);
-  $("#viewCards").classList.toggle("hidden", !cards);
-  $("#tabDecks").classList.toggle("active", !cards);
-  $("#tabCards").classList.toggle("active", cards);
-  $("#tabDecks").setAttribute("aria-selected", String(!cards));
-  $("#tabCards").setAttribute("aria-selected", String(cards));
-  // La modalita' casuale riguarda i mazzi: fuori da li' non ha senso.
-  if (cards) $("#randomPanel").classList.add("hidden");
-  $("#btnRandomMode").classList.toggle("hidden", cards);
-  state.view = name;
-  if (cards && !state.cardsReady) {
-    fillCardFilters();
-    state.cardsReady = true;
+  for (const [key, sel] of Object.entries(VIEWS)) {
+    $(sel).classList.toggle("hidden", key !== name);
   }
-  if (cards) searchCards();
+  for (const [key, sel] of Object.entries(TABS)) {
+    $(sel).classList.toggle("active", key === name);
+    $(sel).setAttribute("aria-selected", String(key === name));
+  }
+  // La modalita' casuale riguarda i mazzi: fuori da li' non ha senso.
+  if (name !== "decks") $("#randomPanel").classList.add("hidden");
+  $("#btnRandomMode").classList.toggle("hidden", name !== "decks");
+  state.view = name;
+
+  if (name === "cards") {
+    if (!state.cardsReady) {
+      fillCardFilters();
+      state.cardsReady = true;
+    }
+    searchCards();
+  }
+  if (name === "editor") {
+    editorInit();
+    if (!state.editing) editorLoad(EMPTY_DECK());
+    else editorRender();
+    pickerRender();
+  }
 }
 
 function fillCardFilters() {
@@ -786,6 +992,93 @@ function init() {
 
   $("#tabDecks").addEventListener("click", () => showView("decks"));
   $("#tabCards").addEventListener("click", () => showView("cards"));
+  $("#tabEditor").addEventListener("click", () => showView("editor"));
+
+  // --- editor ---
+  $("#edName").addEventListener("input", (ev) => {
+    if (state.editing) state.editing.name = ev.target.value;
+  });
+  $("#edNew").addEventListener("click", () => {
+    if (state.editing && state.editing.main.length &&
+        !confirm("Vuoi davvero svuotare il mazzo in corso?")) return;
+    editorLoad(EMPTY_DECK());
+  });
+  $("#edImport").addEventListener("change", async (ev) => {
+    const file = ev.target.files && ev.target.files[0];
+    if (!file) return;
+    try {
+      const parsed = Store.parseYdk(await file.text());
+      parsed.name = parsed.name || file.name.replace(/\.ydk$/i, "");
+      editorLoad(parsed);
+      showView("editor");
+    } catch (err) {
+      editorFlash("Non riesco a leggere il file: " + err.message);
+    }
+    ev.target.value = "";          // cosi' si puo' ricaricare lo stesso file
+  });
+  $("#edSave").addEventListener("click", () => {
+    const saved = Store.saveDeck(state.editing);
+    if (!saved) return editorFlash("Salvataggio non riuscito.");
+    state.editing.id = saved.id;
+    renderSavedDecks();
+    editorFlash("Mazzo salvato.");
+  });
+  $("#edDownload").addEventListener("click", () => {
+    const deck = state.editing;
+    Store.downloadYdk({
+      deck_num: deck.id || "nuovo",
+      name: deck.name || "Mazzo senza nome",
+      author: deck.author || "",
+      main: deck.main, extra: deck.extra, side: deck.side,
+    });
+  });
+  $("#edMine").addEventListener("click", () => {
+    $("#edMinePanel").classList.toggle("hidden");
+    renderSavedDecks();
+  });
+
+  document.querySelector(".editor-zones").addEventListener("click", (ev) => {
+    const tile = ev.target.closest(".card-tile");
+    if (tile) editorRemove(Number(tile.dataset.id), tile.dataset.zone);
+  });
+  $("#pickerGrid").addEventListener("click", (ev) => {
+    const side = ev.target.closest(".to-side");
+    if (side) {
+      ev.stopPropagation();
+      return editorAdd(Number(side.dataset.side), true);
+    }
+    const tile = ev.target.closest(".picker-tile");
+    if (tile) editorAdd(Number(tile.dataset.id), false);
+  });
+
+  let pickerTimer = null;
+  const pickerDebounced = () => {
+    clearTimeout(pickerTimer);
+    pickerTimer = setTimeout(() => {
+      state.pickerPage = 1;
+      pickerRender();
+    }, 220);
+  };
+  $("#pQuery").addEventListener("input", pickerDebounced);
+  $("#pArchetype").addEventListener("input", pickerDebounced);
+  $("#pGroup").addEventListener("change", () => { state.pickerPage = 1; pickerRender(); });
+  $("#pAttribute").addEventListener("change", () => { state.pickerPage = 1; pickerRender(); });
+  $("#pPrev").addEventListener("click", () => {
+    if (state.pickerPage > 1) { state.pickerPage -= 1; pickerRender(); }
+  });
+  $("#pNext").addEventListener("click", () => { state.pickerPage += 1; pickerRender(); });
+
+  $("#btnEditDeck").addEventListener("click", () => {
+    const d = state.deck;
+    if (!d) return;
+    closeDeck();
+    // Una copia: modificare non deve toccare il mazzo originale.
+    editorLoad({
+      name: d.name + " (copia)",
+      main: [...d.main], extra: [...d.extra], side: [...d.side],
+    });
+    showView("editor");
+  });
 
   let cardTimer = null;
   const cardsDebounced = () => {

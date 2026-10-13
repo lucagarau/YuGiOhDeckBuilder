@@ -19,6 +19,7 @@
   <nav class="tabs" role="tablist">
     <button id="tabDecks" class="tab active" role="tab" aria-selected="true">Mazzi</button>
     <button id="tabCards" class="tab" role="tab" aria-selected="false">Carte</button>
+    <button id="tabEditor" class="tab" role="tab" aria-selected="false">Crea mazzo</button>
   </nav>
 
   <div class="topbar-actions">
@@ -163,10 +164,71 @@
     <footer class="modal-foot">
       <button id="btnYdk" class="btn btn-primary">Scarica .ydk</button>
       <button id="btnPreview" class="btn btn-ghost">Anteprima .ydk</button>
+      <button id="btnEditDeck" class="btn btn-ghost">Modifica mazzo</button>
       <button id="btnReroll" class="btn btn-ghost hidden">&#127922; Estrai un altro</button>
       <a id="linkSource" class="btn btn-ghost" target="_blank" rel="noopener">Apri la fonte</a>
     </footer>
   </div>
+</div>
+
+<div id="viewEditor" class="hidden">
+<section class="panel editor-bar">
+  <input id="edName" placeholder="Nome del mazzo" autocomplete="off">
+  <button id="edNew" class="btn btn-ghost">Nuovo</button>
+  <label class="btn btn-ghost" for="edImport">Importa .ydk</label>
+  <input id="edImport" type="file" accept=".ydk,text/plain" hidden>
+  <button id="edSave" class="btn btn-primary">Salva</button>
+  <button id="edDownload" class="btn btn-ghost">Scarica .ydk</button>
+  <button id="edMine" class="btn btn-ghost">I miei mazzi</button>
+</section>
+
+<section id="edMinePanel" class="panel hidden">
+  <div id="edMineList" class="saved-list"></div>
+</section>
+
+<section class="editor-status">
+  <div id="edCounts" class="counts-row"></div>
+  <div id="edErrors" class="errors hidden"></div>
+</section>
+
+<div class="editor-grid">
+  <div class="editor-zones">
+    <section class="zone" data-zone="main">
+      <div class="zone-head"><h3>Main Deck</h3><span class="muted" data-count="main"></span></div>
+      <div class="card-grid" data-grid="main"></div>
+    </section>
+    <section class="zone" data-zone="extra">
+      <div class="zone-head"><h3>Extra Deck</h3><span class="muted" data-count="extra"></span></div>
+      <div class="card-grid" data-grid="extra"></div>
+    </section>
+    <section class="zone" data-zone="side">
+      <div class="zone-head"><h3>Side Deck</h3><span class="muted" data-count="side"></span></div>
+      <div class="card-grid" data-grid="side"></div>
+    </section>
+    <p class="hint">Clicca una carta del mazzo per togliere una copia.</p>
+  </div>
+
+  <aside class="editor-picker">
+    <div class="picker-filters">
+      <input id="pQuery" type="search" placeholder="Cerca una carta...">
+      <select id="pGroup">
+        <option value="">Tutte</option>
+        <option value="Mostri">Mostri</option>
+        <option value="Magie">Magie</option>
+        <option value="Trappole">Trappole</option>
+      </select>
+      <select id="pAttribute"><option value="">Ogni attributo</option></select>
+      <input id="pArchetype" list="archetypeList" placeholder="Archetipo..." autocomplete="off">
+    </div>
+    <p class="hint">Clicca per aggiungere. Il tasto <strong>S</strong> manda al Side.</p>
+    <div id="pickerGrid" class="picker-grid"></div>
+    <div class="picker-foot">
+      <button id="pPrev" class="btn btn-ghost" disabled>&#8592;</button>
+      <span id="pPageLabel" class="muted">1</span>
+      <button id="pNext" class="btn btn-ghost" disabled>&#8594;</button>
+    </div>
+  </aside>
+</div>
 </div>
 
 <div id="cardOverlay" class="overlay card-overlay hidden">

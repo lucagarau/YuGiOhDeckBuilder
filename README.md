@@ -53,6 +53,33 @@ Di default sono ordinate per quanto vengono usate, cosi' vedi subito
 quali sono le piu' giocate; sotto ogni carta c'e' in quanti mazzi
 compare, e cliccandola si apre la stessa scheda di dettaglio.
 
+## Creare un mazzo
+
+La scheda **Crea mazzo** e' un editor completo. Puoi partire da zero,
+**importare un file `.ydk`** che hai gia', oppure aprire un mazzo
+dell'archivio e premere **Modifica mazzo**: ne prende una copia, cosi'
+l'originale resta com'e'.
+
+Si usa cosi':
+
+- **Clicca una carta** nel pannello di destra per aggiungerla. Finisce da
+  sola nella zona giusta: i mostri Fusione, Synchro, Xyz e Link vanno
+  nell'Extra Deck, tutto il resto nel Main.
+- Il tasto **S** sull'angolo della carta la manda nel **Side Deck**.
+- **Clicca una carta del mazzo** per togliere una copia.
+
+In alto vedi sempre quante carte hai in ogni zona e cosa non va: massimo
+tre copie della stessa carta in tutto il mazzo, Main fra 40 e 60, Extra e
+Side fino a 15. I conteggi diventano verdi quando il mazzo e' a posto.
+
+Quando hai finito, **Scarica .ydk** oppure **Salva** per tenerlo in
+**I miei mazzi**.
+
+> I mazzi salvati restano **nel tuo browser, su questo computer**: non
+> vengono caricati da nessuna parte. Se cancelli i dati del sito o apri
+> il sito da un altro dispositivo non li trovi. Per non perderli, scarica
+> il `.ydk`.
+
 ### Il tasto Random
 
 Se non sai cosa giocare, premi **Random**: scegli uno o piu' formati,
@@ -118,8 +145,9 @@ al mazzo ed elenca quali mancano.
 Il sito si aggiorna da solo due volte al giorno. Nell'app, quando premi
 _Aggiorna DB_.
 
-**Posso creare un mazzo mio?**
-Non ancora: per ora si possono cercare e scaricare quelli esistenti.
+**I mazzi che salvo si vedono anche dal telefono?**
+No: restano nel browser del computer su cui li hai salvati. Per portarli
+altrove scarica il `.ydk`.
 
 ## Crediti
 
